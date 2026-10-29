@@ -12,7 +12,8 @@ export function crearD1() {
   const preparar = (sql) => {
     let params = [];
     const s = {
-      bind(...p) { params = p; return s; },
+      // D1 real rechaza más de 100 valores por consulta; la base simulada también, para que esto no pase desapercibido en local
+      bind(...p) { if (p.length > 100) throw new Error(`D1_ERROR: too many SQL variables (${p.length} > 100)`); params = p; return s; },
       async all() { return { results: raw.prepare(sql).all(...params).map((r) => ({ ...r })) }; },
       async first() { const r = raw.prepare(sql).get(...params); return r ? { ...r } : null; },
       async run() { const i = raw.prepare(sql).run(...params); return { meta: { changes: Number(i.changes), last_row_id: Number(i.lastInsertRowid) } }; },

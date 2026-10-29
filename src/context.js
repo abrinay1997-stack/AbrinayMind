@@ -4,7 +4,7 @@ import { activar, adyacencia } from '../public/core/graph.js';
 import { planear, PROFUNDIDAD, bloqueXml } from '../public/core/context.js';
 import { modosDe, detectarModo } from '../public/core/modes.js';
 import { desvanecido } from '../public/core/graph.js';
-import { todas, marcas } from './db.js';
+import { todas, notasPorNombre } from './db.js';
 import { grafoDe } from './graph.js';
 import { buscar } from './search.js';
 
@@ -35,7 +35,7 @@ export async function armarContexto(env, db, brain, { consulta, modo = null, anc
   const candidatas = [...despertadas].sort((a, b) => b[1] - a[1]).slice(0, MAX_CANDIDATAS).map(([n]) => n);
   const fijas = grafo.nodes.filter((n) => n.s).map((n) => n.id);
   const pedir = [...new Set([...fijas, ...candidatas, ...anclasOk, ...(modoOk ? [modoOk] : [])])];
-  const filas = pedir.length ? await todas(db, `select name, folder, text, always, private, tipo from notes where brain_id = ? and name in (${marcas(pedir.length)})`, brain.id, ...pedir) : [];
+  const filas = await notasPorNombre(db, brain.id, pedir, 'name, folder, text, always, private, tipo');
   const notas = new Map(filas.map((f) => [f.name, { nombre: f.name, carpeta: f.folder, texto: f.text, siempre: !!f.always, privado: !!f.private, tipo: f.tipo }]));
 
   // 2ª pasada: se empaqueta con presupuesto

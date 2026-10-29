@@ -3,7 +3,7 @@
 // y cada propuesta lleva la revisión de la nota que leyó la IA: si la nota cambió mientras tanto, no se toca.
 import { resumen, leerCabecera, fold } from '../public/core/text.js';
 import { bad, ahora } from './http.js';
-import { todas, una } from './db.js';
+import { todas, una, notasPorNombre } from './db.js';
 import { leerAjustes, elegirModelo, llamar } from './models.js';
 import * as uso from './usage.js';
 import * as notas from './notes.js';
@@ -23,7 +23,7 @@ export async function sugerir(env, db, brain, { limite = 3, desde = 0, fetchFn =
     const { resultados } = await buscar(env, db, brain, `${n.name} ${resumen(n.text, 300)}`, { n: 25 });
     const lista = resultados.filter((r) => r.nombre !== n.name);
     if (!lista.length) { items.push({ nota: n.name, updated: n.updated, destinos: [] }); continue; }
-    const filas = await todas(db, `select name, text from notes where brain_id = ? and name in (${lista.map(() => '?').join(',')})`, brain.id, ...lista.map((r) => r.nombre));
+    const filas = await notasPorNombre(db, brain.id, lista.map((r) => r.nombre), 'name, text');
     const res = new Map(filas.map((f) => [f.name, resumen(f.text, 140)]));
     const t0 = ahora();
     const r = await llamar(env, modelo, {
