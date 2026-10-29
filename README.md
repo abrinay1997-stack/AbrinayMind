@@ -55,15 +55,24 @@ Detalle paso a paso en [`docs/DESPLIEGUE.md`](docs/DESPLIEGUE.md).
 
 ## Desarrollo
 
+No hace falta cuenta de Cloudflare ni llaves para desarrollar la interfaz:
+
 ```bash
 npm install
-cp .dev.vars.example .dev.vars      # y rellénalo
-npm run migrate:local
-npm run dev                         # http://localhost:8787
-npm test                            # núcleo, API, letras, interfaz y despliegue
+cp .dev.vars.example .dev.vars        # APP_PASSWORD=clave-local-123 y una SESSION_SECRET cualquiera
+npm run migrate:local                 # D1 local (usa wrangler.local.jsonc, sin Workers AI)
+npm run demo:llm                      # (otra terminal) proveedor de IA simulado en :8799, no gasta nada
+npm run dev                           # http://localhost:8787
+npm run demo:boveda && npm run demo:importar   # cerebro «Artista Demo» con 230 notas inventadas
+npm run capturas -- --etiqueta antes  # capturas de todas las vistas en 6 tamaños (ver scripts/dev/capturas.mjs)
+npm test
 ```
 
-`wrangler dev` ejecuta Workers AI de forma remota: «Significado» solo funciona con tu cuenta de Cloudflare conectada (`wrangler login`). Todo lo demás funciona sin red; para probar sin gastar puedes apuntar `ANTHROPIC_BASE_URL` a un proveedor simulado.
+En `.dev.vars` añade `ANTHROPIC_BASE_URL=http://127.0.0.1:8799` y `ANTHROPIC_API_KEY=lo-que-sea` para que el Estudio hable con el proveedor simulado.
+
+- `npm run dev` usa `wrangler.local.jsonc`, que no lleva el binding de Workers AI (obliga a iniciar sesión en Cloudflare). Sin él todo funciona menos «Significado», que avisa de que falta.
+- `npm run dev:ia` usa la configuración real y necesita `wrangler login`.
+- **No ejecutes** `npm run migrate` ni `npm run deploy` (apuntan a producción): el despliegue lo hace GitHub al fusionar en `main`.
 
 ### Formato de la bóveda
 

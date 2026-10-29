@@ -9,13 +9,16 @@ Plataforma de cerebros por artista para escribir letras. Cloudflare Worker + Sta
 3. Las notas con `privado: true` **nunca** se envían a un modelo que entrena (`entrena: true` en el catálogo). Cualquier cambio en `src/context.js` o `public/core/context.js` debe conservar esa garantía (hay tests).
 4. Los secretos solo viven como secretos del Worker. Nunca en `wrangler.jsonc`, en el código ni en la interfaz.
 5. No pongas identificadores de modelo en commits, PRs ni comentarios de código.
+6. Nunca ejecutes `npm run migrate`, `npm run deploy` ni `wrangler … --remote`: tocan producción. Producción se despliega solo al fusionar en `main`.
 
 ## Comandos
 
 ```bash
 npm test                      # todo, sin red (D1 simulada sobre node:sqlite, IA y proveedores simulados)
-npm run dev                   # wrangler dev (necesita .dev.vars; ver .dev.vars.example)
+npm run dev                   # wrangler dev con wrangler.local.jsonc: sin cuenta de Cloudflare y sin Workers AI (ver .dev.vars.example)
+npm run dev:ia                # con Workers AI real: necesita `wrangler login`
 npm run migrate:local         # aplica migrations/ a la D1 local
+npm run demo:boveda && npm run demo:importar && npm run demo:llm   # datos y proveedor de IA de mentira para probar la interfaz
 ```
 
 ## Dónde vive cada cosa
@@ -24,7 +27,7 @@ npm run migrate:local         # aplica migrations/ a la D1 local
 - `src/app.js` — tabla de rutas (`/api/*`). Cada módulo (`notes`, `search`, `meaning`, `models`, `chat`, `songs`, `connect`, `transfer`, `brains`) tiene una responsabilidad.
 - `public/js/` — interfaz sin build (módulos ES). `h()` en `ui.js` crea DOM sin `innerHTML`; el único HTML que se inserta sale de `md.js` (escapa todo) y de los iconos propios.
 - `migrations/` — solo se añaden archivos nuevos (`0002_…`), nunca se edita uno ya aplicado.
-- `scripts/ci/` — ayudantes del despliegue. El **extractor de la bóveda de Abrinay NO está en este repositorio** (contiene curación y fragmentos de letras): vive en el repositorio privado de las fuentes, en `herramientas/abrinay-mind/`. No lo traigas aquí.
+- `scripts/ci/` — ayudantes del despliegue. `scripts/dev/` — bóveda de demostración (datos inventados), proveedor de IA simulado, importador local y capturas de pantalla. `wrangler.local.jsonc` debe mantenerse igual que `wrangler.jsonc` salvo `ai` y `triggers` (hay un test). El **extractor de la bóveda de Abrinay NO está en este repositorio** (contiene curación y fragmentos de letras): vive en el repositorio privado de las fuentes, en `herramientas/abrinay-mind/`. No lo traigas aquí.
 
 ## Convenciones
 
