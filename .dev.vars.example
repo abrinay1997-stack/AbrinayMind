@@ -1,0 +1,7 @@
+# Copia este archivo a .dev.vars para desarrollar en local (.dev.vars no se sube a Git).
+APP_PASSWORD=pon-aqui-una-clave
+SESSION_SECRET=una-frase-larga-de-al-menos-16-letras
+ANTHROPIC_API_KEY=sk-ant-...
+# META_API_KEY=...
+# Opcional: apuntar a un proveedor simulado para probar sin gastar
+# ANTHROPIC_BASE_URL=http://127.0.0.1:8799

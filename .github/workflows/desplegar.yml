@@ -1,0 +1,82 @@
+name: Desplegar
+
+# Pruebas en cada push y PR. En `main` (o a mano) además despliega a Cloudflare:
+# crea la base D1 si no existe, aplica las migraciones, despliega el Worker y sube los secretos que tengas en GitHub.
+# Secretos de GitHub necesarios:  CLOUDFLARE_API_TOKEN · CLOUDFLARE_ACCOUNT_ID
+# Secretos de GitHub opcionales (si los pones aquí, se copian al Worker): APP_PASSWORD · SESSION_SECRET · ANTHROPIC_API_KEY · META_API_KEY
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: desplegar-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  probar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - run: npm test
+
+  desplegar:
+    needs: probar
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+
+      - name: Comprobar credenciales de Cloudflare
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo "::error::Faltan los secretos CLOUDFLARE_API_TOKEN y/o CLOUDFLARE_ACCOUNT_ID en GitHub (Settings → Secrets and variables → Actions)."
+            exit 1
+          fi
+
+      - name: Preparar la base D1
+        run: node scripts/ci/d1.mjs
+
+      - name: Aplicar migraciones
+        run: npx wrangler d1 migrations apply abrinay-mind-db --remote
+
+      - name: Desplegar el Worker
+        id: despliegue
+        run: |
+          npx wrangler deploy 2>&1 | tee despliegue.log
+          URL=$(grep -oE 'https://[A-Za-z0-9.-]+\.workers\.dev' despliegue.log | head -1 || true)
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
+
+      - name: Subir secretos del Worker
+        env:
+          APP_PASSWORD: ${{ secrets.APP_PASSWORD }}
+          SESSION_SECRET: ${{ secrets.SESSION_SECRET }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          META_API_KEY: ${{ secrets.META_API_KEY }}
+        run: |
+          node scripts/ci/secretos.mjs "$RUNNER_TEMP/secretos.json"
+          if [ "$(cat "$RUNNER_TEMP/secretos.json")" != "{}" ]; then npx wrangler secret bulk "$RUNNER_TEMP/secretos.json"; fi
+          rm -f "$RUNNER_TEMP/secretos.json"
+
+      - name: Comprobar que responde
+        run: |
+          URL="${{ steps.despliegue.outputs.url }}"
+          if [ -z "$URL" ]; then echo "No pude leer la URL del despliegue; revísala en el panel de Cloudflare."; exit 0; fi
+          for i in 1 2 3 4 5 6; do
+            if curl -fsS "$URL/api/health"; then echo; echo "Listo: $URL"; exit 0; fi
+            sleep 5
+          done
+          echo "::warning::El Worker se desplegó pero /api/health aún no responde en $URL."

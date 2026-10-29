@@ -1,0 +1,11 @@
+node_modules/
+.wrangler/
+.dev.vars
+# La bóveda de un artista (letras sin publicar, perfil personal) NUNCA va a Git: se carga a D1 con «Importar bóveda».
+vault-out/
+*.vault.json
+brains/
+.env
+.env.*
+*.log
+.DS_Store

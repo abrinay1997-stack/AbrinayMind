@@ -1,0 +1,33 @@
+{
+  // Abrinay Mind en Cloudflare: un Worker (API en /api/*) + la interfaz como Static Assets + una base D1.
+  // La interfaz se sirve sin pasar por el Worker (no gasta CPU); solo /api/* lo despierta, y ahí se exige la sesión.
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "abrinay-mind",
+  "main": "./src/index.js",
+  "compatibility_date": "2026-09-16",
+  "compatibility_flags": ["nodejs_compat"],
+
+  "assets": {
+    "directory": "./public/",
+    "binding": "ASSETS",
+    "html_handling": "auto-trailing-slash",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
+  },
+
+  // El database_id lo rellena el workflow «Desplegar» en cada despliegue (busca la base por nombre y la crea si no existe). No es un secreto.
+  "d1_databases": [
+    { "binding": "DB", "database_name": "abrinay-mind-db", "database_id": "REEMPLAZAR_CON_EL_ID_DE_D1", "migrations_dir": "migrations" }
+  ],
+
+  // «Buscar por significado» (embeddings bge-m3). Sin este binding la búsqueda sigue funcionando solo por palabras.
+  "ai": { "binding": "AI" },
+
+  // Limpieza diaria (papelera de más de 30 días).
+  "triggers": { "crons": ["17 7 * * *"] },
+
+  "workers_dev": true,
+  // Las variables que pongas en el panel de Cloudflare (p. ej. ANTHROPIC_BASE_URL) sobreviven a cada despliegue.
+  "keep_vars": true,
+  "observability": { "enabled": true }
+}
