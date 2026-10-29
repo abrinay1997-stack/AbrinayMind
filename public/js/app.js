@@ -3,6 +3,7 @@ import { GET, POST, alSalir } from './api.js';
 import { S, bus, cargarCerebros, abrir, modelos, pintar, ruta, ir, VISTAS, actual } from './store.js';
 import { h, poner, icono, dialogo, aviso, fallo, num, usd, esMovil, selectorColor } from './ui.js';
 import * as importador from './importar.js';
+import { ayuda } from './ayuda.js';
 import { MUESTRAS, normalizar } from './color.js';
 
 const raiz = document.getElementById('root');
@@ -33,7 +34,7 @@ async function arrancar() {
 }
 
 function pantallaError(titulo, texto) {
-  poner(raiz, h('div.login', h('div.box', h('div', { style: { color: 'var(--warn)', display: 'grid', placeItems: 'center' } }, icono('warn', 34)), h('h1', titulo), h('p', texto), h('button.btn.primary', { onclick: () => location.reload() }, 'Reintentar'))));
+  poner(raiz, h('main.login', h('div.box', h('div', { style: { color: 'var(--warn)', display: 'grid', placeItems: 'center' } }, icono('warn', 34)), h('h1', titulo), h('p', texto), h('button.btn.primary', { onclick: () => location.reload() }, 'Reintentar'))));
 }
 
 /* ---------- login ---------- */
@@ -68,7 +69,7 @@ function login() {
     try { await POST('/api/login', { password: campo.value }); parar(); await entrar(); }
     catch (x) { err.textContent = x.message; campo.select(); } finally { boton.disabled = false; }
   } }, h('div.field', campo), boton, err);
-  poner(raiz, h('div.login', lienzo, h('div.box', h('div', { style: { color: 'var(--accent)', display: 'grid', placeItems: 'center' } }, icono('logo', 42)), h('h1', 'Abrinay Mind'), h('p', 'Cerebros que escriben como sus artistas.'), form)));
+  poner(raiz, h('main.login', lienzo, h('div.box', h('div', { style: { color: 'var(--accent)', display: 'grid', placeItems: 'center' } }, icono('logo', 42)), h('h1', 'Abrinay Mind'), h('p', 'Cerebros que escriben como sus artistas.'), form)));
   parar = red(lienzo);
   setTimeout(() => campo.focus(), 50);
 }
@@ -85,10 +86,10 @@ async function entrar() {
 function construirArmazon() {
   const rail = h('nav.rail', { 'aria-label': 'Cerebros' });
   const cabeza = h('header.head');
-  contenedor = h('div.view', { id: 'vista', tabindex: '-1' });
+  contenedor = h('main.view', { id: 'vista', tabindex: '-1', 'aria-label': 'Contenido' });
   const mnav = h('nav.mnav', { 'aria-label': 'Secciones' });
   armazon = { rail, cabeza, mnav };
-  poner(raiz, h('div.app', rail, h('div.main', cabeza, contenedor), mnav));
+  poner(raiz, h('a.skip', { href: '#vista', onclick: (e) => { e.preventDefault(); contenedor.focus(); } }, 'Saltar al contenido'), h('div.app', rail, h('div.main', cabeza, contenedor), mnav));
   pintarRail(); pintarCabeza();
 }
 
@@ -100,6 +101,7 @@ function pintarRail() {
     S.cerebros.map((c) => h('button.avatar', { style: { '--c': c.color }, 'data-tip': c.name, 'aria-label': `Abrir el cerebro de ${c.name}`, 'aria-current': c.slug === S.slug ? 'true' : null, onclick: () => ir(c.slug, ruta().vista === 'ajustes' ? 'cerebro' : ruta().vista) }, (c.name[0] || '?').toUpperCase())),
     h('button.avatar.add', { 'data-tip': 'Nuevo cerebro o importar', 'aria-label': 'Nuevo cerebro', onclick: menuNuevo }, '+'),
     h('div.grow'),
+    h('button.ibtn', { 'data-tip': 'Cómo funciona (?)', 'aria-label': 'Ayuda: cómo funciona', onclick: ayuda }, icono('help')),
     h('button.ibtn', { 'data-tip': 'Ajustes y modelos', 'aria-label': 'Ajustes', onclick: () => ir('ajustes') }, icono('settings')),
     h('button.ibtn', { 'data-tip': 'Cerrar sesión', 'aria-label': 'Cerrar sesión', onclick: salir }, icono('logout')));
 }
@@ -109,10 +111,10 @@ function pintarCabeza() {
   const { cabeza, mnav } = armazon, r = ruta(), c = actual(), enAjustes = r.vista === 'ajustes';
   chipsEl = h('div.row', { style: { gap: '8px' } });
   poner(cabeza,
-    h('button.brand', { title: 'Cambiar de cerebro', 'aria-label': enAjustes ? 'Ajustes. Cambiar de cerebro' : `Cerebro ${c?.name || ''}. Cambiar de cerebro`, 'aria-haspopup': 'dialog', onclick: selector },
+    h('button.brand', { title: 'Cambiar de cerebro', 'aria-haspopup': 'dialog', onclick: selector },
       enAjustes ? null : h('span.av', { style: { '--c': c?.color || 'var(--accent)' }, 'aria-hidden': 'true' }, ((c?.name || 'A')[0]).toUpperCase()),
-      h('span.txt', h('b', enAjustes ? 'Ajustes' : c ? c.name : 'Abrinay Mind', enAjustes ? null : icono('chevron')), h('small', enAjustes ? 'Modelos, llaves y gasto' : c?.subtitle || 'Plataforma de cerebros para escribir'))),
-    enAjustes ? null : h('div.tabs', { role: 'tablist' }, PESTAÑAS.map(([id, nombre, ic]) => h('button.tab', { role: 'tab', 'aria-current': r.vista === id ? 'page' : null, onclick: () => ir(S.slug, id) }, icono(ic), nombre))),
+      h('span.txt', h('b', enAjustes ? 'Ajustes' : c ? c.name : 'Abrinay Mind', enAjustes ? null : icono('chevron')), h('small', enAjustes ? 'Modelos, llaves y gasto' : c?.subtitle || 'Plataforma de cerebros para escribir')), h('span.sr', '. Cambiar de cerebro')),
+    enAjustes ? null : h('nav.tabs', { 'aria-label': 'Secciones' }, PESTAÑAS.map(([id, nombre, ic]) => h('button.tab', { 'aria-current': r.vista === id ? 'page' : null, onclick: () => ir(S.slug, id) }, icono(ic), nombre))),
     h('div.grow'), chipsEl);
   poner(mnav, [...PESTAÑAS.slice(0, 4), ['mas', 'Más', 'more']].map(([id, nombre, ic]) => h('button', { 'aria-current': (id === r.vista || (id === 'mas' && (r.vista === 'conexiones' || enAjustes))) ? 'page' : null, 'aria-label': nombre, onclick: () => (id === 'mas' ? masMovil() : ir(S.slug || S.cerebros[0]?.slug, id)) }, icono(ic), nombre)));
   refrescarChips();
@@ -156,6 +158,7 @@ function masMovil() {
     h('button.list-row', { style: { textAlign: 'left' }, onclick: () => { d.cerrar(); ir(S.slug, 'conexiones'); } }, icono('link'), h('div.grow', h('b', 'Conexiones'), h('small', 'Salud, significado, aprendido, importar/exportar'))),
     h('button.list-row', { style: { textAlign: 'left' }, onclick: () => { d.cerrar(); selector(); } }, icono('brain'), h('div.grow', h('b', 'Cambiar de cerebro'))),
     h('button.list-row', { style: { textAlign: 'left' }, onclick: () => { d.cerrar(); ir('ajustes'); } }, icono('settings'), h('div.grow', h('b', 'Ajustes y modelos'))),
+    h('button.list-row', { style: { textAlign: 'left' }, onclick: () => { d.cerrar(); ayuda(); } }, icono('help'), h('div.grow', h('b', 'Cómo funciona'), h('small', 'Neurona, sinapsis, lóbulo y más'))),
     h('button.list-row', { style: { textAlign: 'left' }, onclick: () => { d.cerrar(); salir(); } }, icono('logout'), h('div.grow', h('b', 'Cerrar sesión')))) });
 }
 
@@ -200,6 +203,7 @@ async function enrutar() {
       const mod = await import(`./views/${r.vista}.js`);
       vista = (await mod.montar(pagina, { slug: r.slug, param: r.param })) || null;
     } catch (e) { console.error(e); poner(pagina, h('div.empty', h('b', 'No pude abrir esta sección'), h('span', e.message))); }
+    if (!contenedor.contains(document.activeElement)) contenedor.focus({ preventScroll: true });   // quien navega con teclado o lector empieza en el contenido nuevo
     document.title = `${r.vista === 'ajustes' ? 'Ajustes' : actual()?.name || 'Abrinay Mind'} · Abrinay Mind`;
   } finally { enrutando = false; if (repetir) { repetir = false; enrutar(); } }
 }
@@ -210,6 +214,19 @@ function vacio() {
 }
 
 addEventListener('hashchange', () => { if (armazon) enrutar(); });
+
+/* atajos de escritorio (no se activan escribiendo ni con un diálogo abierto) */
+let gPulsada = 0;
+addEventListener('keydown', (e) => {
+  if (!armazon || e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey) return;
+  const t = e.target; if (/INPUT|TEXTAREA|SELECT/.test(t.tagName) || t.isContentEditable || document.querySelector('.scrim')) return;
+  if (e.key === '?') { e.preventDefault(); ayuda(); return; }
+  if (e.key === 'g') { gPulsada = Date.now(); return; }
+  if (Date.now() - gPulsada < 1200) {
+    const v = { c: 'cerebro', n: 'notas', e: 'estudio', s: 'canciones', x: 'conexiones' }[e.key];
+    if (v) { e.preventDefault(); gPulsada = 0; ir(S.slug || S.cerebros[0]?.slug, v); } else if (e.key === 'a') { e.preventDefault(); gPulsada = 0; ir('ajustes'); }
+  }
+});
 addEventListener('beforeunload', (e) => { if (vista?.hayCambios?.()) { e.preventDefault(); e.returnValue = ''; } });
 export { VISTAS };
 arrancar();

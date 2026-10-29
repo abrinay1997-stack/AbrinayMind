@@ -70,6 +70,7 @@ const P = {
   menu: '<path d="M4 7h16M4 12h16M4 17h16"/>',
   folder: '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
   warn: '<path d="M12 3 2 20h20zM12 10v4M12 17h0"/>',
+  help: '<circle cx="12" cy="12" r="9"/><path d="M9.6 9.4a2.5 2.5 0 1 1 3.5 2.3c-.7.4-1.1.9-1.1 1.7M12 17h0"/>',
   brain: '<path d="M9.5 3A3.5 3.5 0 0 0 6 6.5v.2A3.5 3.5 0 0 0 4 10c0 1 .4 1.8 1 2.4A3.5 3.5 0 0 0 6 18a3.5 3.5 0 0 0 3.5 3 2.5 2.5 0 0 0 2.5-2.5v-14A2.5 2.5 0 0 0 9.5 3zM14.5 3A3.5 3.5 0 0 1 18 6.5v.2A3.5 3.5 0 0 1 20 10c0 1-.4 1.8-1 2.4A3.5 3.5 0 0 1 18 18a3.5 3.5 0 0 1-3.5 3 2.5 2.5 0 0 1-2.5-2.5"/>',
 };
 export function icono(nombre, tam) {
@@ -85,7 +86,7 @@ export function icono(nombre, tam) {
 let contenedorAvisos;
 export function aviso(texto, tipo = '', ms = 4200) {
   if (!contenedorAvisos) { contenedorAvisos = h('div.toasts', { role: 'status', 'aria-live': 'polite' }); document.body.append(contenedorAvisos); }
-  const t = h('div.toast' + (tipo ? '.' + tipo : ''), texto);
+  const t = h('div.toast' + (tipo ? '.' + tipo : ''), { role: tipo === 'bad' ? 'alert' : null }, texto);
   contenedorAvisos.append(t);
   setTimeout(() => { t.style.transition = 'opacity .25s'; t.style.opacity = '0'; setTimeout(() => t.remove(), 260); }, ms);
   return t;
@@ -204,6 +205,19 @@ export function selectorColor(inicial, alCambiar) {
 
 /* ---------- carga: filas con forma de lista, para que el contenido no salte al llegar ---------- */
 export const esqueleto = (n = 6, alto = 44) => h('div.skel-list', { 'aria-hidden': 'true' }, Array.from({ length: n }, (_, i) => h('div.skeleton', { style: { height: alto + 'px', width: (92 - (i % 3) * 14) + '%' } })));
+
+/* ---------- etiquetas: cada <label> dentro de .field queda asociada a su control (lectores de pantalla, toque en la etiqueta) ---------- */
+let nEtiq = 0;
+function vincularEtiquetas() {
+  for (const f of document.querySelectorAll('.field')) {
+    const l = f.querySelector(':scope > label:not([for])'); if (!l) continue;
+    const c = f.querySelector('input:not([type=checkbox]):not([type=radio]), select, textarea'); if (!c) continue;
+    if (!c.id) c.id = `campo-${++nEtiq}`;
+    l.setAttribute('for', c.id);
+  }
+}
+let pendienteEtiq = 0;
+new MutationObserver(() => { if (!pendienteEtiq) pendienteEtiq = setTimeout(() => { pendienteEtiq = 0; vincularEtiquetas(); }, 60); }).observe(document.documentElement, { childList: true, subtree: true });
 
 /* ---------- utilidades ---------- */
 export const debounce = (fn, ms = 250) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };

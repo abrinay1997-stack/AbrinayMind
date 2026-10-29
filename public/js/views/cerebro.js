@@ -6,6 +6,7 @@ import { notaAHtml } from '../md.js';
 import { fold } from '/core/text.js';
 
 const CAPAS = [['links', 'Enlaces', 'l-links'], ['mentions', 'Menciones', 'l-mention'], ['meaning', 'Significado', 'l-meaning'], ['learned', 'Aprendido', 'l-learned']];
+const QUE_ES = { links: 'Conexiones que escribiste con [[doble corchete]]', mentions: 'Una nota nombra a otra sin enlazarla', meaning: 'Notas que hablan de lo mismo (lo calcula la IA)', learned: 'Se refuerzan al aprobar letras' };
 
 export async function montar(el, { param }) {
   const slug = S.slug;
@@ -68,7 +69,7 @@ export async function montar(el, { param }) {
   /* ---- capas, lóbulos, herramientas ---- */
   const botonesCapa = h('div.layers.glass', { role: 'group', 'aria-label': 'Capas de sinapsis' }, CAPAS.map(([k, nombre, cls]) => {
     const n = k === 'links' ? g.links.length : k === 'mentions' ? g.mentions.length : k === 'meaning' ? g.meaning.length : g.learned.length;
-    const b = h('button.layer.' + cls, { 'aria-pressed': capas[k] ? 'true' : 'false', title: `${num(n)} sinapsis`, onclick: () => {
+    const b = h('button.layer.' + cls, { 'aria-pressed': capas[k] ? 'true' : 'false', title: `${QUE_ES[k]} · ${num(n)} sinapsis`, 'aria-label': `${nombre}: ${QUE_ES[k]}. ${num(n)} sinapsis`, onclick: () => {
       capas[k] = !capas[k]; b.setAttribute('aria-pressed', capas[k]); gr.setCapas({ [k]: capas[k] });
       try { localStorage.setItem('am:capas', JSON.stringify(capas)); } catch { /* sin almacenamiento */ }
       if (k === 'meaning' && !g.meaning.length && capas[k]) aviso('Aún no hay sinapsis de significado: actívalas en Conexiones → Significado.', '', 5200);

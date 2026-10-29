@@ -261,5 +261,7 @@ export async function montar(el, { param }) {
   await cargarLista();
   if (param && porPlegado.has(fold(param))) await abrir(porPlegado.get(fold(param)), { forzar: true }); else pintarEditor();
   if (esMovil() && !actual) raiz.classList.add('show-tree');
-  return { puedeSalir: confirmarSalida, hayCambios: () => sucio, destruir() { document.querySelectorAll('.pop').forEach((x) => x.remove()); } };
+  const teclaBuscar = (e) => { if (e.key === '/' && !e.ctrlKey && !e.metaKey && !/INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName) && !document.querySelector('.scrim')) { e.preventDefault(); raiz.classList.add('show-tree'); filtroEl.focus(); } };
+  addEventListener('keydown', teclaBuscar);
+  return { puedeSalir: confirmarSalida, hayCambios: () => sucio, destruir() { removeEventListener('keydown', teclaBuscar); document.querySelectorAll('.pop').forEach((x) => x.remove()); } };
 }

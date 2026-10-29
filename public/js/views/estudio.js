@@ -173,7 +173,8 @@ export async function montar(el, { param }) {
       msgsInner.append(h('div.empty', { style: { padding: '40px 10px' } }, h('span.orb', { style: { width: '44px', height: '44px', borderRadius: '50%', background: 'radial-gradient(circle at 35% 30%, #fff8, transparent 40%), var(--accent)', boxShadow: '0 0 40px color-mix(in srgb, var(--accent) 55%, transparent)' } }),
         h('b', `Escribe con el cerebro de ${brain?.name || 'este artista'}`),
         h('span', { style: { maxWidth: '52ch' } }, `Lee ${meta?.siempre?.length || 0} notas fijas (reglas de oro, firma, lo aprendido) y busca en ${num(meta?.stats?.notas || 0)} neuronas lo que hace falta para cada encargo. Rellena el constructor o simplemente conversa.`),
-        meta?.modos?.length ? h('span.faint', `Modos: ${meta.modos.map((x) => x.nombre).join(' · ')}`) : null));
+        meta?.modos?.length ? h('span.faint', `Modos: ${meta.modos.map((x) => x.nombre).join(' · ')}`) : null,
+        mods && mods.proveedores.every((p) => !p.configurada) ? h('div.aviso-llave', { role: 'note' }, icono('warn', 18), h('div', h('b', 'Falta la llave de un modelo'), h('span', 'El cerebro puede leer tus notas, pero no escribir hasta que añadas ANTHROPIC_API_KEY o META_API_KEY en Cloudflare.')), h('button.btn.small', { onclick: () => ir('ajustes') }, 'Ver Ajustes')) : null));
       return;
     }
     for (const m of mensajes) msgsInner.append(pintarMensaje(m));

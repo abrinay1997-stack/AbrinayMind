@@ -344,3 +344,11 @@ details.avanzado[open] { padding-bottom: 14px; }
   .row.wrap > .btn { flex: 1 1 auto; }
   .list-row { flex-wrap: wrap; }
 }
+
+/* ---------- accesibilidad y ayuda ---------- */
+.skip { position: fixed; left: 12px; top: -60px; z-index: var(--z-login); background: var(--surface-3); color: var(--text); padding: 10px 16px; border-radius: var(--r-m); border: 1px solid var(--line-3); transition: top var(--dur-2); } .skip:focus { top: calc(10px + var(--sai-t)); }
+#vista:focus { outline: none; }
+.glosario { display: grid; grid-template-columns: minmax(96px, max-content) 1fr; gap: 10px 16px; margin: 0; } .glosario dt { font-weight: 600; color: var(--text); } .glosario dd { margin: 0; color: var(--text-2); }
+kbd { font-family: var(--mono); font-size: .88em; background: var(--surface-3); border: 1px solid var(--line-2); border-bottom-width: 2px; border-radius: 6px; padding: 1px 6px; color: var(--text); }
+.aviso-llave { display: flex; gap: 12px; align-items: center; text-align: left; max-width: 520px; margin-top: 14px; padding: 12px 14px; border: 1px solid color-mix(in srgb, var(--warn) 40%, transparent); background: color-mix(in srgb, var(--warn) 8%, var(--surface)); border-radius: var(--r-m); color: var(--text-2); } .aviso-llave svg { color: var(--warn); } .aviso-llave b { display: block; color: var(--text); } .aviso-llave span { font-size: 13px; }
+@media (max-width: 600px) { .glosario { grid-template-columns: 1fr; gap: 2px; } .glosario dd { margin-bottom: 10px; } .aviso-llave { flex-wrap: wrap; } }
