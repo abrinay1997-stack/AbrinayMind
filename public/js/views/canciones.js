@@ -1,5 +1,5 @@
 // Abrinay Mind — Canciones: la biblioteca de letras y el veredicto del artista. Aprobar refuerza lo que funcionó; rechazar deja una lección que el cerebro lee la próxima vez.
-import { h, poner, vaciar, icono, aviso, fallo, dialogo, pedir, confirmar, copiar, num, fecha, esMovil } from '../ui.js';
+import { h, poner, vaciar, icono, aviso, fallo, dialogo, pedir, confirmar, copiar, num, fecha, esMovil, esqueleto } from '../ui.js';
 import { S, api, ir, irANota, invalidarGrafo, recargarMeta } from '../store.js';
 import { parsear } from '../lyric.js';
 import { vistaDeLetra, mdEl } from '../letra-ui.js';
@@ -103,12 +103,26 @@ export async function montar(el, { param }) {
     const gusto = campo('La línea que sí te gustó'), nunca = campo('La línea que nunca escribirías'), perfecta = campo('Cómo debería ser'), prox = campo('Para la próxima versión'), mantener = campo('Lo que hay que conservar');
     const porSeccion = secciones.map((s) => { const e = h('select', ['bien', 'regular', 'mal'].map((x) => h('option', { value: x }, x))), q = h('input', { type: 'text', placeholder: 'Qué falló aquí' }); return { s, e, q, el: h('div.row', { style: { gap: '8px' } }, h('span.tag', { style: { minWidth: '88px', justifyContent: 'center' } }, s.nombre), e, q) }; });
     porSeccion.forEach((x) => { x.e.style.width = '110px'; });
-    const cuerpo = h('div.stack', { style: { gap: '16px' } },
-      h('div.field', h('label', 'Puntuación'), est.el), h('div.field', h('label', '¿Qué falló? (marca todo lo que aplique)'), checks), h('div.field', h('label', 'Comentario'), coment),
-      porSeccion.length ? h('div.field', h('label', 'Por sección'), h('div.stack', { style: { gap: '6px' } }, porSeccion.map((x) => x.el))) : null,
-      h('div.grid2', gusto.el, nunca.el, perfecta.el, prox.el), mantener.el);
+    // tres pasos: 1 puntuación y diagnóstico · 2 comentario y secciones · 3 líneas concretas
+    const pasos = [
+      h('div.stack', { style: { gap: '16px' } }, h('div.field', h('span.label', 'Puntuación'), est.el), h('div.field', h('span.label', '¿Qué falló? (marca todo lo que aplique)'), checks)),
+      h('div.stack', { style: { gap: '16px' } }, h('div.field', h('label', 'Comentario'), coment), porSeccion.length ? h('div.field', h('span.label', 'Por sección'), h('div.stack', { style: { gap: '6px' } }, porSeccion.map((x) => x.el))) : null),
+      h('div.stack', { style: { gap: '16px' } }, h('div.grid2', gusto.el, nunca.el, perfecta.el, prox.el), mantener.el),
+    ];
+    let paso = 0;
+    const progreso = h('div.pasos', { role: 'status' });
+    const cuerpo = h('div.stack', { style: { gap: '14px' } }, progreso, ...pasos);
+    const mostrar = () => {
+      pasos.forEach((el, i) => { el.hidden = i !== paso; });
+      poner(progreso, h('span', `Paso ${paso + 1} de ${pasos.length}`), h('div.progress', h('i', { style: { width: `${((paso + 1) / pasos.length) * 100}%` } })));
+      const [, atras, sigue, rechaza] = [...(d?.el.querySelectorAll('.actions button') || [])];
+      if (atras) { atras.hidden = paso === 0; sigue.hidden = paso === pasos.length - 1; rechaza.hidden = paso !== pasos.length - 1; }
+      d?.el.querySelector('.mbody')?.scrollTo?.(0, 0);
+    };
     const d = dialogo({ titulo: `Rechazar «${c.title}»`, sub: 'Esto queda en la bitácora de errores y el cerebro propondrá una regla para no repetirlo.', ancho: true, cuerpo, acciones: [
       { texto: 'Cancelar', tipo: 'ghost' },
+      { texto: 'Atrás', tipo: 'ghost', onclick: () => { paso = Math.max(0, paso - 1); mostrar(); return false; } },
+      { texto: 'Siguiente', tipo: 'primary', onclick: () => { paso = Math.min(pasos.length - 1, paso + 1); mostrar(); return false; } },
       { texto: 'Rechazar y enseñar al cerebro', tipo: 'danger', onclick: async () => {
         const formulario = { diagnostico: [...marcados], gusto: gusto.i.value, nunca: nunca.i.value, perfecta: perfecta.i.value, instruccion: prox.i.value, mantener: mantener.i.value,
           secciones: Object.fromEntries(porSeccion.map((x) => [x.s.nombre, { estado: x.e.value, queMal: x.q.value }])) };
@@ -116,6 +130,7 @@ export async function montar(el, { param }) {
         invalidarGrafo(); recargarMeta(); await cargar();
         regla(c, r, prox.i.value);
       } }] });
+    mostrar();
     return d;
   }
 
@@ -131,7 +146,8 @@ export async function montar(el, { param }) {
       } }] });
   }
 
-  await cargar();
+  poner(cuadricula, esqueleto(4, 110)); cuadricula.style.display = 'block';
+  try { await cargar(); } catch (e) { poner(cuadricula, h('div.empty', h('b', 'No pude cargar las canciones'), h('span', e.message), h('button.btn', { onclick: () => ir(slug, 'canciones') }, icono('refresh'), 'Reintentar'))); return {}; }
   if (param) abrir(param);
   return {};
 }

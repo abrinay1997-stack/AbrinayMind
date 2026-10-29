@@ -26,6 +26,7 @@
   --sai-b: env(safe-area-inset-bottom, 0px); --sai-t: env(safe-area-inset-top, 0px); --sai-l: env(safe-area-inset-left, 0px); --sai-r: env(safe-area-inset-right, 0px);
 }
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 html, body { height: 100%; margin: 0; }
 body { background: var(--bg); color: var(--text); font: var(--t-md)/1.55 var(--sans); -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; overflow: hidden; }
 button, input, select, textarea { font: inherit; color: inherit; }
@@ -328,3 +329,18 @@ details.avanzado[open] { padding-bottom: 14px; }
   .msg-foot .btn { margin-left: -6px; }
 }
 @media (max-width: 420px) { details.avanzado > summary small { display: none; } }
+
+/* ---------- Canciones, Conexiones y Ajustes en móvil ---------- */
+.pasos { display: grid; gap: 6px; font-size: 12.5px; color: var(--muted); }
+.stars button { min-width: 0; }
+@media (max-width: 900px) {
+  .stars { display: grid; grid-template-columns: repeat(auto-fill, minmax(52px, 1fr)); gap: 6px; } .stars button { height: 48px; width: 100%; font-size: 16px; }
+  .scrim:has(.modal.wide) { padding: 0; } .modal.wide { height: 100dvh; max-height: 100dvh; border-radius: 0; border: 0; } .modal.wide .grab { display: none; } .modal.wide .mbody { padding-top: calc(16px + var(--sai-t)); }
+  .grid2 > * { min-width: 0; }
+  .keyrow { flex-direction: column; align-items: flex-start; gap: 8px; } .keyrow .row { flex-wrap: wrap; } .keyrow code { overflow-wrap: anywhere; }
+  .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; } .kpi { padding: 12px 14px; } .kpi b { font-size: 22px; }
+  .card { padding: 16px; } .setrow { align-items: stretch; gap: 8px; }
+  .songs { grid-template-columns: 1fr; } .filters { flex-wrap: nowrap; overflow-x: auto; margin-inline: -16px; padding-inline: 16px; } .filters button { flex: none; }
+  .row.wrap > .btn { flex: 1 1 auto; }
+  .list-row { flex-wrap: wrap; }
+}

@@ -1,6 +1,6 @@
 // Abrinay Mind — Conexiones: la salud del cerebro y todo lo que lo mantiene conectado.
 // Menciones, significado (vectores), sugerencias con IA, lo aprendido, y llevar la bóveda de un lado a otro.
-import { h, poner, vaciar, icono, aviso, fallo, dialogo, pedir, confirmar, num, fecha } from '../ui.js';
+import { h, poner, vaciar, icono, aviso, fallo, dialogo, pedir, confirmar, num, fecha, esqueleto } from '../ui.js';
 import { S, api, bus, ir, irANota, invalidarGrafo, recargarMeta, cargarCerebros, pintar } from '../store.js';
 import * as importador from '../importar.js';
 
@@ -150,6 +150,7 @@ export async function montar(el) {
     try { const { DELETE } = await import('../api.js'); await DELETE(`/api/brains/${encodeURIComponent(slug)}`, { confirm: v.confirm.trim() }); S.slug = null; S.meta = null; await cargarCerebros(); bus.dispatchEvent(new Event('cerebros')); aviso('Cerebro borrado.'); ir(S.cerebros[0]?.slug || 'x', 'cerebro'); } catch (e) { fallo(e); }
   }
 
-  try { await cargar(); } catch (e) { poner(raiz, h('div.empty', h('b', 'No pude cargar las conexiones'), h('span', e.message))); }
+  poner(raiz, h('h1', 'Conexiones'), esqueleto(4, 96));
+  try { await cargar(); } catch (e) { poner(raiz, h('div.empty', h('b', 'No pude cargar las conexiones'), h('span', e.message), h('button.btn', { onclick: () => location.reload() }, icono('refresh'), 'Reintentar'))); }
   return {};
 }
