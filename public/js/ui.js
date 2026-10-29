@@ -202,6 +202,9 @@ export function selectorColor(inicial, alCambiar) {
   return { el: h('div.stack', { style: { gap: '10px' } }, caja, h('div.row', { style: { gap: '10px' } }, hex, h('span.hint', 'o escribe uno, como #94a3b8'))), valor: () => normalizarColor(hex.value) };
 }
 
+/* ---------- carga: filas con forma de lista, para que el contenido no salte al llegar ---------- */
+export const esqueleto = (n = 6, alto = 44) => h('div.skel-list', { 'aria-hidden': 'true' }, Array.from({ length: n }, (_, i) => h('div.skeleton', { style: { height: alto + 'px', width: (92 - (i % 3) * 14) + '%' } })));
+
 /* ---------- utilidades ---------- */
 export const debounce = (fn, ms = 250) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
 export const fecha = (t) => { if (!t) return '—'; const d = new Date(t); return d.toLocaleDateString('es', { day: 'numeric', month: 'short', year: 'numeric' }); };

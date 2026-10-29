@@ -1,5 +1,5 @@
 // Abrinay Mind — Notas: el árbol de carpetas y el editor. Escribir, editar, renombrar (reescribe los enlaces), mover y mandar a la papelera.
-import { h, poner, icono, aviso, fallo, confirmar, pedir, dialogo, debounce, num, fechaHora, esMovil, copiar, vaciar } from '../ui.js';
+import { h, poner, icono, aviso, fallo, confirmar, pedir, dialogo, debounce, num, fechaHora, esMovil, copiar, vaciar, esqueleto } from '../ui.js';
 import { S, api, ir, invalidarGrafo, recargarMeta } from '../store.js';
 import { notaAHtml } from '../md.js';
 import { fold, enlaces as enlacesDe } from '/core/text.js';
@@ -98,7 +98,7 @@ export async function montar(el, { param }) {
   function pintarEditor() {
     editorEl.classList.toggle('split', modo === 'dividir');
     if (!actual) {
-      poner(editorEl, h('div.bar', h('button.btn.ghost.small', { onclick: () => raiz.classList.add('show-tree'), style: { display: esMovil() ? '' : 'none' } }, icono('menu'), 'Notas')),
+      poner(editorEl, h('div.bar', h('button.btn.ghost.small.volver', { onclick: () => raiz.classList.add('show-tree'), style: { display: esMovil() ? '' : 'none' } }, icono('chevron'), 'Notas')),
         h('div.empty', { style: { flex: 1 } }, icono('notes', 36), h('b', 'Elige una nota'), h('span', 'Cada nota es una neurona. Los [[enlaces]] que escribas son sus sinapsis.'), h('button.btn.primary', { onclick: () => nueva() }, icono('plus'), 'Nueva nota')));
       return;
     }
@@ -107,14 +107,17 @@ export async function montar(el, { param }) {
     const modoBtn = (id, ic, t) => h('button.btn.ghost.small', { title: t, 'aria-label': t, 'aria-pressed': modo === id, style: modo === id ? { color: 'var(--text)', background: 'var(--surface-2)' } : {}, onclick: () => { modo = id; try { localStorage.setItem('am:notas:modo', id); } catch { /* sin almacenamiento */ } pintarEditor(); } }, icono(ic));
     pie = h('div.foot');
     const bGuardar = h('button.btn.primary.small', { id: 'guardar', disabled: !sucio, onclick: guardar }, icono('save'), 'Guardar');
-    const barra = h('div.bar', h('button.btn.ghost.small', { onclick: () => raiz.classList.add('show-tree'), style: { display: esMovil() ? '' : 'none' } }, icono('menu')),
-      h('h2', actual.name), estadoGuardado,
-      h('div.row', { style: { gap: '2px' } }, modoBtn('leer', 'eye', 'Solo lectura'), esMovil() ? null : modoBtn('dividir', 'split', 'Editar y ver a la vez'), modoBtn('editar', 'code', 'Solo texto')),
-      bGuardar,
-      h('button.btn.ghost.small', { title: 'Ver en el cerebro', 'aria-label': 'Ver en el cerebro', onclick: () => ir(slug, 'cerebro', actual.name) }, icono('graph')),
-      h('button.btn.ghost.small', { title: 'Renombrar', 'aria-label': 'Renombrar', onclick: renombrar }, icono('edit')),
-      h('button.btn.ghost.small', { title: 'Mover de carpeta', 'aria-label': 'Mover', onclick: mover }, icono('folder')),
-      h('button.btn.ghost.small', { title: 'Mandar a la papelera', 'aria-label': 'Eliminar', onclick: eliminar }, icono('trash')));
+    const segMovil = h('div.seg', { role: 'radiogroup', 'aria-label': 'Modo de la nota' }, [['leer', 'Leer', 'eye'], ['editar', 'Editar', 'edit']].map(([id, t, ic]) => h('button', { type: 'button', role: 'radio', 'aria-checked': modo === id ? 'true' : 'false', onclick: () => { modo = id; try { localStorage.setItem('am:notas:modo', id); } catch { /* sin almacenamiento */ } pintarEditor(); if (id === 'editar') setTimeout(() => ta?.focus(), 30); } }, icono(ic, 16), t)));
+    const barra = esMovil()
+      ? h('div.bar.bar-m', h('div.row', { style: { width: '100%', gap: '6px' } }, h('button.btn.ghost.small.volver', { onclick: () => raiz.classList.add('show-tree') }, icono('chevron'), 'Notas'), h('h2', actual.name), estadoGuardado),
+        h('div.row', { style: { width: '100%', gap: '8px' } }, segMovil, h('div', { style: { flex: 1 } }), bGuardar, h('button.btn.small', { 'aria-label': 'Más acciones', 'aria-haspopup': 'dialog', onclick: menuMas }, icono('more'))))
+      : h('div.bar', h('h2', actual.name), estadoGuardado,
+        h('div.row', { style: { gap: '2px' } }, modoBtn('leer', 'eye', 'Solo lectura'), modoBtn('dividir', 'split', 'Editar y ver a la vez'), modoBtn('editar', 'code', 'Solo texto')),
+        bGuardar,
+        h('button.btn.ghost.small', { title: 'Ver en el cerebro', 'aria-label': 'Ver en el cerebro', onclick: () => ir(slug, 'cerebro', actual.name) }, icono('graph')),
+        h('button.btn.ghost.small', { title: 'Renombrar', 'aria-label': 'Renombrar', onclick: renombrar }, icono('edit')),
+        h('button.btn.ghost.small', { title: 'Mover de carpeta', 'aria-label': 'Mover', onclick: mover }, icono('folder')),
+        h('button.btn.ghost.small', { title: 'Mandar a la papelera', 'aria-label': 'Eliminar', onclick: eliminar }, icono('trash')));
     const paneles = h('div.panes');
     if (modo !== 'leer') paneles.append(ta);
     if (modo !== 'editar') paneles.append(vista);
@@ -148,6 +151,12 @@ export async function montar(el, { param }) {
   }
 
   /* ---------- acciones ---------- */
+  function menuMas() {
+    const fila = (ic, t, sub, fn, peligro) => h('button.list-row', { style: { textAlign: 'left', width: '100%', ...(peligro ? { color: 'var(--bad)' } : {}) }, onclick: () => { d.cerrar(); fn(); } }, icono(ic), h('div.grow', h('b', t), sub ? h('small', sub) : null));
+    const d = dialogo({ titulo: actual.name, cuerpo: h('div.stack', { style: { gap: '8px' } },
+      fila('graph', 'Ver en el cerebro', 'Abre esta neurona en el mapa', () => ir(slug, 'cerebro', actual.name)), fila('edit', 'Renombrar', 'Reescribe los enlaces que la nombran', renombrar),
+      fila('folder', 'Mover de carpeta', 'La carpeta es el lóbulo donde vive', mover), fila('trash', 'Mandar a la papelera', 'Podrás restaurarla', eliminar, true)) });
+  }
   async function guardar() {
     if (!actual || !sucio) return;
     const texto = ta.value;
@@ -225,8 +234,9 @@ export async function montar(el, { param }) {
     const cerrarPop = () => { pop?.remove(); pop = null; };
     const insertar = (n) => { ta.setRangeText(`${n}]]`, inicio, ta.selectionStart, 'end'); cerrarPop(); ta.focus(); ta.dispatchEvent(new Event('input')); };
     const mostrar = () => {
-      const { x, y } = caretXY(ta, ta.selectionStart);
-      cerrarPop(); pop = h('div.pop.glass', { role: 'listbox', style: { left: Math.min(x, innerWidth - 300) + 'px', top: Math.min(y + 4, innerHeight - 250) + 'px' } },
+      const { x, y } = caretXY(ta, ta.selectionStart), vv = window.visualViewport, vh = vv ? vv.height : innerHeight, top0 = vv ? vv.offsetTop : 0, vw = vv ? vv.width : innerWidth;   // el teclado virtual encoge el viewport visual
+      const abajo = y + 4 + 250 <= top0 + vh;
+      cerrarPop(); pop = h('div.pop.glass', { role: 'listbox', 'aria-label': 'Notas para enlazar', style: { left: Math.max(8, Math.min(x, vw - 296)) + 'px', ...(abajo ? { top: (y + 4) + 'px' } : { top: Math.max(top0 + 8, y - 250 - 28) + 'px' }) } },
         items.map((n, i) => h('button.result', { role: 'option', 'aria-selected': i === sel ? 'true' : 'false', onmousedown: (e) => { e.preventDefault(); insertar(n); } }, h('b', n))));
       document.body.append(pop);
     };
@@ -247,6 +257,7 @@ export async function montar(el, { param }) {
     });
   }
 
+  poner(arbolEl, esqueleto(8, 30));
   await cargarLista();
   if (param && porPlegado.has(fold(param))) await abrir(porPlegado.get(fold(param)), { forzar: true }); else pintarEditor();
   if (esMovil() && !actual) raiz.classList.add('show-tree');
