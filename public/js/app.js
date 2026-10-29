@@ -7,7 +7,7 @@ import { MUESTRAS, normalizar } from './color.js';
 
 const raiz = document.getElementById('root');
 const PESTAÑAS = [['cerebro', 'Cerebro', 'graph'], ['notas', 'Notas', 'notes'], ['estudio', 'Estudio', 'studio'], ['canciones', 'Canciones', 'songs'], ['conexiones', 'Conexiones', 'link']];
-let vista = null, contenedor = null, armazon = null, enrutando = false, hashPrevio = location.hash;
+let vista = null, contenedor = null, armazon = null, enrutando = false, repetir = false, hashPrevio = location.hash;
 
 /* ---------- arranque ---------- */
 async function arrancar() {
@@ -96,8 +96,9 @@ function pintarCabeza() {
   const { cabeza, mnav } = armazon, r = ruta(), c = actual(), enAjustes = r.vista === 'ajustes';
   chipsEl = h('div.row', { style: { gap: '8px' } });
   poner(cabeza,
-    h('button.brand', { style: { textAlign: 'left' }, title: 'Cambiar de cerebro', onclick: selector },
-      h('b', enAjustes ? 'Ajustes' : c ? c.name : 'Abrinay Mind'), h('small', enAjustes ? 'Modelos, llaves y gasto' : c?.subtitle || 'Plataforma de cerebros para escribir')),
+    h('button.brand', { title: 'Cambiar de cerebro', 'aria-label': enAjustes ? 'Ajustes. Cambiar de cerebro' : `Cerebro ${c?.name || ''}. Cambiar de cerebro`, 'aria-haspopup': 'dialog', onclick: selector },
+      enAjustes ? null : h('span.av', { style: { '--c': c?.color || 'var(--accent)' }, 'aria-hidden': 'true' }, ((c?.name || 'A')[0]).toUpperCase()),
+      h('span.txt', h('b', enAjustes ? 'Ajustes' : c ? c.name : 'Abrinay Mind', enAjustes ? null : icono('chevron')), h('small', enAjustes ? 'Modelos, llaves y gasto' : c?.subtitle || 'Plataforma de cerebros para escribir'))),
     enAjustes ? null : h('div.tabs', { role: 'tablist' }, PESTAÑAS.map(([id, nombre, ic]) => h('button.tab', { role: 'tab', 'aria-current': r.vista === id ? 'page' : null, onclick: () => ir(S.slug, id) }, icono(ic), nombre))),
     h('div.grow'), chipsEl);
   poner(mnav, [...PESTAÑAS.slice(0, 4), ['mas', 'Más', 'more']].map(([id, nombre, ic]) => h('button', { 'aria-current': (id === r.vista || (id === 'mas' && (r.vista === 'conexiones' || enAjustes))) ? 'page' : null, 'aria-label': nombre, onclick: () => (id === 'mas' ? masMovil() : ir(S.slug || S.cerebros[0]?.slug, id)) }, icono(ic), nombre)));
@@ -167,7 +168,7 @@ function importarBoveda() {
 
 /* ---------- enrutador ---------- */
 async function enrutar() {
-  if (enrutando) return; enrutando = true;
+  if (enrutando) { repetir = true; return; } enrutando = true;   // un cambio de hash a mitad de camino no se pierde: se atiende al terminar
   try {
     const r = ruta();
     if (vista?.puedeSalir && !(await vista.puedeSalir())) { history.replaceState(null, '', hashPrevio); return; }
@@ -187,7 +188,7 @@ async function enrutar() {
       vista = (await mod.montar(pagina, { slug: r.slug, param: r.param })) || null;
     } catch (e) { console.error(e); poner(pagina, h('div.empty', h('b', 'No pude abrir esta sección'), h('span', e.message))); }
     document.title = `${r.vista === 'ajustes' ? 'Ajustes' : actual()?.name || 'Abrinay Mind'} · Abrinay Mind`;
-  } finally { enrutando = false; }
+  } finally { enrutando = false; if (repetir) { repetir = false; enrutar(); } }
 }
 
 function vacio() {

@@ -92,34 +92,60 @@ export function aviso(texto, tipo = '', ms = 4200) {
 }
 export const fallo = (e) => aviso(e?.message || String(e), 'bad', 6500);
 
-/* ---------- diálogos ---------- */
+/* ---------- diálogos (en móvil son hojas inferiores) ---------- */
 const abiertos = [];
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && abiertos.length) abiertos[abiertos.length - 1].cerrar(); });
+const FOCABLES = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), summary, [tabindex]:not([tabindex="-1"])';
+const fondo = () => document.getElementById('root');
+let nIds = 0;
 
 /**
  * dialogo({ titulo, sub, cuerpo, acciones:[{ texto, tipo:'primary'|'danger'|'ghost', onclick(cerrar) → false para no cerrar }], ancho })
  * → { cerrar, el }
+ * Accesible: el fondo queda inerte, el foco se queda dentro (Tab/Mayús+Tab), Esc cierra y el foco vuelve a donde estaba.
+ * En móvil se arrastra hacia abajo desde el asa para cerrar.
  */
 export function dialogo({ titulo, sub, cuerpo, acciones = [], ancho = false, alCerrar }) {
-  const previo = document.activeElement;
+  const previo = document.activeElement, id = `dlg-${++nIds}`;
   const scrim = h('div.scrim', { onmousedown: (e) => { if (e.target === scrim) cerrar(); } });
-  const caja = h('div.modal' + (ancho ? '.wide' : ''), { role: 'dialog', 'aria-modal': 'true', 'aria-label': titulo || 'Diálogo' },
-    titulo ? h('h2', titulo) : null, sub ? h('p.sub', sub) : null, cuerpo || null);
-  let barra = null;
-  const cerrar = () => { const i = abiertos.indexOf(api); if (i >= 0) abiertos.splice(i, 1); scrim.remove(); try { previo?.focus?.(); } catch { /* sin foco previo */ } alCerrar?.(); };
+  const asa = h('div.grab', { 'aria-hidden': 'true' }, h('i'));
+  const caja = h('div.modal' + (ancho ? '.wide' : ''), { role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': titulo ? id : null, 'aria-label': titulo ? null : 'Diálogo', tabindex: '-1' },
+    asa, h('div.mbody', titulo ? h('h2', { id }, titulo) : null, sub ? h('p.sub', sub) : null, cuerpo || null));
+  let barra = null, cerrado = false;
+  const cerrar = () => {
+    if (cerrado) return; cerrado = true;
+    const i = abiertos.indexOf(api); if (i >= 0) abiertos.splice(i, 1);
+    scrim.remove(); if (!abiertos.length) fondo()?.removeAttribute('inert');
+    try { previo?.focus?.(); } catch { /* sin foco previo */ } alCerrar?.();
+  };
   const api = { cerrar, el: caja, scrim };
   if (acciones.length) {
     barra = h('div.actions', acciones.map((a) => h('button.btn' + (a.tipo ? '.' + a.tipo : ''), {
       type: 'button', disabled: a.deshabilitado,
       onclick: async (e) => {
-        const b = e.currentTarget; b.disabled = true;
-        try { const r = await a.onclick?.(cerrar, api); if (r !== false) cerrar(); } catch (err) { fallo(err); } finally { b.disabled = false; }
+        const b = e.currentTarget; b.disabled = true; b.setAttribute('aria-busy', 'true');
+        try { const r = await a.onclick?.(cerrar, api); if (r !== false) cerrar(); } catch (err) { fallo(err); } finally { b.disabled = false; b.removeAttribute('aria-busy'); }
       },
     }, a.texto)));
     caja.append(barra);
   }
-  scrim.append(caja); document.body.append(scrim); abiertos.push(api);
-  setTimeout(() => (caja.querySelector('[autofocus], input, textarea, select') || caja.querySelector('button.primary') || caja).focus?.(), 30);
+  caja.addEventListener('keydown', (e) => {
+    if (e.key !== 'Tab') return;
+    const lista = [...caja.querySelectorAll(FOCABLES)].filter((x) => x.offsetParent !== null);
+    if (!lista.length) { e.preventDefault(); return; }
+    const primero = lista[0], ultimo = lista[lista.length - 1];
+    if (e.shiftKey && (document.activeElement === primero || document.activeElement === caja)) { e.preventDefault(); ultimo.focus(); }
+    else if (!e.shiftKey && document.activeElement === ultimo) { e.preventDefault(); primero.focus(); }
+  });
+  // arrastrar el asa hacia abajo cierra la hoja
+  let y0 = null, dy = 0;
+  asa.addEventListener('pointerdown', (e) => { y0 = e.clientY; dy = 0; asa.setPointerCapture(e.pointerId); caja.style.transition = 'none'; });
+  asa.addEventListener('pointermove', (e) => { if (y0 == null) return; dy = Math.max(0, e.clientY - y0); caja.style.transform = `translateY(${dy}px)`; });
+  const soltar = () => { if (y0 == null) return; y0 = null; caja.style.transition = ''; if (dy > 90) cerrar(); else caja.style.transform = ''; };
+  asa.addEventListener('pointerup', soltar); asa.addEventListener('pointercancel', soltar);
+  scrim.append(caja); document.body.append(scrim); abiertos.push(api); fondo()?.setAttribute('inert', '');
+  // en móvil no se abre el teclado de golpe: el foco va a la hoja; en escritorio, al primer campo
+  setTimeout(() => (esMovil() ? caja : (caja.querySelector('[autofocus], input, textarea, select') || caja.querySelector('button.primary') || caja)).focus?.(), 30);
   return api;
 }
 
