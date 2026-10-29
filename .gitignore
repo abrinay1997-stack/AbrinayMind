@@ -9,3 +9,4 @@ brains/
 .env.*
 *.log
 .DS_Store
+capturas/

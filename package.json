@@ -5,11 +5,16 @@
   "type": "module",
   "description": "Abrinay Mind — cerebros de artistas conectados por enlaces y significados, para escribir letras. Cloudflare Worker + D1 + Workers AI.",
   "scripts": {
-    "dev": "wrangler dev",
+    "dev": "wrangler dev -c wrangler.local.jsonc",
+    "dev:ia": "wrangler dev",
     "test": "node --test \"tests/*.test.mjs\"",
     "migrate": "wrangler d1 migrations apply abrinay-mind-db --remote",
-    "migrate:local": "wrangler d1 migrations apply abrinay-mind-db --local",
-    "deploy": "wrangler deploy"
+    "migrate:local": "wrangler d1 migrations apply abrinay-mind-db --local -c wrangler.local.jsonc",
+    "deploy": "wrangler deploy",
+    "demo:boveda": "node scripts/dev/boveda-demo.mjs",
+    "demo:importar": "node scripts/dev/importar.mjs",
+    "demo:llm": "node scripts/dev/llm-simulado.mjs",
+    "capturas": "node scripts/dev/capturas.mjs"
   },
   "devDependencies": {
     "wrangler": "^4.155.0"

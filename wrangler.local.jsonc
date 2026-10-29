@@ -1,0 +1,23 @@
+{
+  // Configuración SOLO para desarrollar en tu computador: igual que wrangler.jsonc pero sin el binding de Workers AI
+  // (que obliga a iniciar sesión en Cloudflare) y sin el cron. No necesita cuenta ni llaves de Cloudflare.
+  // Sin el binding «AI» la app funciona entera menos «Significado», que avisa de que falta. Mantén esto en sincronía con wrangler.jsonc
+  // (hay una prueba que lo comprueba).
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "abrinay-mind",
+  "main": "./src/index.js",
+  "compatibility_date": "2026-09-16",
+  "compatibility_flags": ["nodejs_compat"],
+
+  "assets": {
+    "directory": "./public/",
+    "binding": "ASSETS",
+    "html_handling": "auto-trailing-slash",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
+  },
+
+  "d1_databases": [
+    { "binding": "DB", "database_name": "abrinay-mind-db", "database_id": "REEMPLAZAR_CON_EL_ID_DE_D1", "migrations_dir": "migrations" }
+  ]
+}
