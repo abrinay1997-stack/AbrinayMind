@@ -12,6 +12,19 @@ export async function lotes(db, sentencias, tam = 80) {
 
 export const marcas = (n) => Array.from({ length: n }, () => '?').join(',');
 
+/**
+ * Filas de `notes` cuyo nombre está en `nombres`, pedidas por lotes: D1 admite como máximo 100 valores por consulta
+ * (la base simulada de las pruebas también lo exige). `columnas` es una lista fija nuestra, nunca texto del usuario.
+ */
+export async function notasPorNombre(db, brainId, nombres, columnas, tam = 80) {
+  const lista = [...new Set(nombres)], filas = [];
+  for (let i = 0; i < lista.length; i += tam) {
+    const trozo = lista.slice(i, i + tam);
+    filas.push(...await todas(db, `select ${columnas} from notes where brain_id = ? and name in (${marcas(trozo.length)})`, brainId, ...trozo));
+  }
+  return filas;
+}
+
 export async function auditar(db, brainId, kind, who, detail) {
   try { await db.prepare('insert into audit (at, brain_id, kind, who, detail) values (?,?,?,?,?)').bind(ahora(), brainId ?? null, kind, who || 'artista', recortar(typeof detail === 'string' ? detail : JSON.stringify(detail), 600)).run(); } catch { /* el registro nunca tumba una acción */ }
 }

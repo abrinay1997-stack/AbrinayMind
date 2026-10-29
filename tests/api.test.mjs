@@ -164,3 +164,17 @@ test('exportar e importar: la bóveda viaja entera y los lotes grandes se rechaz
   await t.j('POST', '/api/b/prueba/import/notas', { notas: x.notas.slice(0, 10) });
   assert.equal((await t.j('GET', '/api/b/prueba/meta')).datos.stats.notas, BOVEDA_CHICA.length);
 });
+
+test('con significado activo y muchas notas parecidas, buscar y escribir no superan el límite de 100 valores de D1', async () => {
+  const t = await conBoveda({ conAI: true });
+  // 140 notas inventadas que hablan de lo mismo: para la IA de mentira todas se parecen a la consulta
+  const muchas = Array.from({ length: 140 }, (_, i) => ({ nombre: `Rima suelta ${i + 1}`, carpeta: '20-Estilo', texto: `# Rima suelta ${i + 1}\n\nLa rima y la soledad, versión ${i + 1}.` }));
+  for (let i = 0; i < muchas.length; i += 12) assert.equal((await t.j('POST', '/api/b/prueba/import/notas', { notas: muchas.slice(i, i + 12) })).status, 200);
+  let e; do { e = (await t.j('POST', '/api/b/prueba/meaning/index', { cuantas: 8 })).datos; } while (e.pendientes > 0 && e.hechas > 0);
+  assert.equal(e.activo, true);
+  const r = await t.j('GET', '/api/b/prueba/search?q=' + encodeURIComponent('rima y soledad'));
+  assert.equal(r.status, 200, JSON.stringify(r.datos)); assert.equal(r.datos.significado, true);
+  const chat = (await t.j('POST', '/api/b/prueba/chats', { titulo: 'x' })).datos.conversacion;
+  const m = await t.flujo(`/api/b/prueba/chats/${chat.id}/message`, { fn: 'chat', texto: 'rima y soledad', anclas: [], modo: null });
+  assert.equal(m.status, 200, JSON.stringify(m.datos));
+});

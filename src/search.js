@@ -1,6 +1,6 @@
 // Abrinay Mind — buscar en el cerebro: palabras (BM25 de FTS5) y, cuando está activo, significado (vectores). Se mezclan 50/50.
 import { ftsQuery, tokens, fold } from '../public/core/text.js';
-import { todas } from './db.js';
+import { todas, notasPorNombre } from './db.js';
 import * as significado from './meaning.js';
 
 /** Pasajes que casan con la consulta por palabras, mejor primero: [{ nota, idx, titulo, texto, s }] (s > 0). */
@@ -34,7 +34,7 @@ export async function buscar(env, db, brain, consulta, { n = 12, pesos = new Map
   }
   const nombres = new Set([...lex.keys(), ...(sims ? sims.keys() : [])]);
   const q = new Set(tokens(consulta));
-  const filas = await todas(db, `select name, folder from notes where brain_id = ? and name in (${[...nombres].map(() => '?').join(',') || "''"})`, brain.id, ...nombres);
+  const filas = await notasPorNombre(db, brain.id, nombres, 'name, folder');
   const carpeta = new Map(filas.map((f) => [f.name, f.folder]));
   const medioSim = sims && sims.size ? [...sims.values()].reduce((a, b) => a + b, 0) / sims.size : 0;
   const out = [];
