@@ -27,7 +27,7 @@ Los cuatro últimos el workflow los copia al Worker como **secretos** (nunca que
 
 ## 3 · Desplegar
 
-Haz merge a `main` (o **Actions → Desplegar → Run workflow**). El workflow:
+Ve a **Actions → Desplegar → Run workflow** (elige la rama por defecto del repositorio), o haz push/merge a `main`. El workflow:
 
 1. corre las pruebas;
 2. busca la base D1 `abrinay-mind-db` y la crea si no existe;

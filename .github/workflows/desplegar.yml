@@ -1,6 +1,6 @@
 name: Desplegar
 
-# Pruebas en cada push y PR. En `main` (o a mano) además despliega a Cloudflare:
+# Pruebas en cada push y PR. En `main` (o a mano, con «Run workflow», desde la rama que elijas) además despliega a Cloudflare:
 # crea la base D1 si no existe, aplica las migraciones, despliega el Worker y sube los secretos que tengas en GitHub.
 # Secretos de GitHub necesarios:  CLOUDFLARE_API_TOKEN · CLOUDFLARE_ACCOUNT_ID
 # Secretos de GitHub opcionales (si los pones aquí, se copian al Worker): APP_PASSWORD · SESSION_SECRET · ANTHROPIC_API_KEY · META_API_KEY
@@ -29,7 +29,7 @@ jobs:
 
   desplegar:
     needs: probar
-    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
