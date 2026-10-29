@@ -1,12 +1,27 @@
 // Abrinay Mind — arranque: login, armazón (selector de cerebros + pestañas) y enrutador de vistas.
 import { GET, POST, alSalir } from './api.js';
 import { S, bus, cargarCerebros, abrir, modelos, pintar, ruta, ir, VISTAS, actual } from './store.js';
-import { h, poner, icono, dialogo, aviso, fallo, num, usd, esMovil } from './ui.js';
+import { h, poner, icono, dialogo, aviso, fallo, num, usd, esMovil, selectorColor } from './ui.js';
 import * as importador from './importar.js';
+import { ayuda } from './ayuda.js';
+import { MUESTRAS, normalizar } from './color.js';
 
 const raiz = document.getElementById('root');
+
+/* Teclado virtual: el viewport visual se encoge pero el de diseño no (iOS). Ajustamos la altura de la app a lo que se ve y
+   escondemos la barra inferior mientras se escribe, para que el compositor quede justo sobre el teclado. */
+const vv = window.visualViewport;
+if (vv) {
+  const ajustar = () => {
+    const st = document.documentElement.style, abierto = window.innerHeight - vv.height > 140;
+    st.setProperty('--app-h', vv.height + 'px');
+    document.documentElement.classList.toggle('teclado', abierto);
+    if (abierto && window.scrollY) window.scrollTo(0, 0);
+  };
+  vv.addEventListener('resize', ajustar); vv.addEventListener('scroll', ajustar); ajustar();
+}
 const PESTAÑAS = [['cerebro', 'Cerebro', 'graph'], ['notas', 'Notas', 'notes'], ['estudio', 'Estudio', 'studio'], ['canciones', 'Canciones', 'songs'], ['conexiones', 'Conexiones', 'link']];
-let vista = null, contenedor = null, armazon = null, enrutando = false, hashPrevio = location.hash;
+let vista = null, contenedor = null, armazon = null, enrutando = false, repetir = false, hashPrevio = location.hash;
 
 /* ---------- arranque ---------- */
 async function arrancar() {
@@ -19,7 +34,7 @@ async function arrancar() {
 }
 
 function pantallaError(titulo, texto) {
-  poner(raiz, h('div.login', h('div.box', h('div', { style: { color: 'var(--warn)', display: 'grid', placeItems: 'center' } }, icono('warn', 34)), h('h1', titulo), h('p', texto), h('button.btn.primary', { onclick: () => location.reload() }, 'Reintentar'))));
+  poner(raiz, h('main.login', h('div.box', h('div', { style: { color: 'var(--warn)', display: 'grid', placeItems: 'center' } }, icono('warn', 34)), h('h1', titulo), h('p', texto), h('button.btn.primary', { onclick: () => location.reload() }, 'Reintentar'))));
 }
 
 /* ---------- login ---------- */
@@ -33,7 +48,7 @@ function red(canvas) {
     for (const p of puntos) { if (!quieto) { p.x += p.vx; p.y += p.vy; if (p.x < 0 || p.x > w) p.vx *= -1; if (p.y < 0 || p.y > hh) p.vy *= -1; } }
     for (let i = 0; i < puntos.length; i++) for (let j = i + 1; j < puntos.length; j++) {
       const a = puntos[i], b = puntos[j], d = Math.hypot(a.x - b.x, a.y - b.y);
-      if (d < 150) { ctx.strokeStyle = `rgba(139,92,246,${(1 - d / 150) * .35})`; ctx.lineWidth = .8; ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke(); }
+      if (d < 150) { ctx.strokeStyle = `rgba(148,163,184,${(1 - d / 150) * .35})`; ctx.lineWidth = .8; ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke(); }
     }
     for (const p of puntos) { ctx.fillStyle = 'rgba(220,210,255,.7)'; ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, 6.3); ctx.fill(); }
     if (!quieto) raf = requestAnimationFrame(pintarRed);
@@ -54,7 +69,7 @@ function login() {
     try { await POST('/api/login', { password: campo.value }); parar(); await entrar(); }
     catch (x) { err.textContent = x.message; campo.select(); } finally { boton.disabled = false; }
   } }, h('div.field', campo), boton, err);
-  poner(raiz, h('div.login', lienzo, h('div.box', h('div', { style: { color: 'var(--accent)', display: 'grid', placeItems: 'center' } }, icono('logo', 42)), h('h1', 'Abrinay Mind'), h('p', 'Cerebros que escriben como sus artistas.'), form)));
+  poner(raiz, h('main.login', lienzo, h('div.box', h('div', { style: { color: 'var(--accent)', display: 'grid', placeItems: 'center' } }, icono('logo', 42)), h('h1', 'Abrinay Mind'), h('p', 'Cerebros que escriben como sus artistas.'), form)));
   parar = red(lienzo);
   setTimeout(() => campo.focus(), 50);
 }
@@ -71,10 +86,10 @@ async function entrar() {
 function construirArmazon() {
   const rail = h('nav.rail', { 'aria-label': 'Cerebros' });
   const cabeza = h('header.head');
-  contenedor = h('div.view', { id: 'vista', tabindex: '-1' });
+  contenedor = h('main.view', { id: 'vista', tabindex: '-1', 'aria-label': 'Contenido' });
   const mnav = h('nav.mnav', { 'aria-label': 'Secciones' });
   armazon = { rail, cabeza, mnav };
-  poner(raiz, h('div.app', rail, h('div.main', cabeza, contenedor), mnav));
+  poner(raiz, h('a.skip', { href: '#vista', onclick: (e) => { e.preventDefault(); contenedor.focus(); } }, 'Saltar al contenido'), h('div.app', rail, h('div.main', cabeza, contenedor), mnav));
   pintarRail(); pintarCabeza();
 }
 
@@ -86,6 +101,7 @@ function pintarRail() {
     S.cerebros.map((c) => h('button.avatar', { style: { '--c': c.color }, 'data-tip': c.name, 'aria-label': `Abrir el cerebro de ${c.name}`, 'aria-current': c.slug === S.slug ? 'true' : null, onclick: () => ir(c.slug, ruta().vista === 'ajustes' ? 'cerebro' : ruta().vista) }, (c.name[0] || '?').toUpperCase())),
     h('button.avatar.add', { 'data-tip': 'Nuevo cerebro o importar', 'aria-label': 'Nuevo cerebro', onclick: menuNuevo }, '+'),
     h('div.grow'),
+    h('button.ibtn', { 'data-tip': 'Cómo funciona (?)', 'aria-label': 'Ayuda: cómo funciona', onclick: ayuda }, icono('help')),
     h('button.ibtn', { 'data-tip': 'Ajustes y modelos', 'aria-label': 'Ajustes', onclick: () => ir('ajustes') }, icono('settings')),
     h('button.ibtn', { 'data-tip': 'Cerrar sesión', 'aria-label': 'Cerrar sesión', onclick: salir }, icono('logout')));
 }
@@ -95,9 +111,10 @@ function pintarCabeza() {
   const { cabeza, mnav } = armazon, r = ruta(), c = actual(), enAjustes = r.vista === 'ajustes';
   chipsEl = h('div.row', { style: { gap: '8px' } });
   poner(cabeza,
-    h('button.brand', { style: { textAlign: 'left' }, title: 'Cambiar de cerebro', onclick: selector },
-      h('b', enAjustes ? 'Ajustes' : c ? c.name : 'Abrinay Mind'), h('small', enAjustes ? 'Modelos, llaves y gasto' : c?.subtitle || 'Plataforma de cerebros para escribir')),
-    enAjustes ? null : h('div.tabs', { role: 'tablist' }, PESTAÑAS.map(([id, nombre, ic]) => h('button.tab', { role: 'tab', 'aria-current': r.vista === id ? 'page' : null, onclick: () => ir(S.slug, id) }, icono(ic), nombre))),
+    h('button.brand', { title: 'Cambiar de cerebro', 'aria-haspopup': 'dialog', onclick: selector },
+      enAjustes ? null : h('span.av', { style: { '--c': c?.color || 'var(--accent)' }, 'aria-hidden': 'true' }, ((c?.name || 'A')[0]).toUpperCase()),
+      h('span.txt', h('b', enAjustes ? 'Ajustes' : c ? c.name : 'Abrinay Mind', enAjustes ? null : icono('chevron')), h('small', enAjustes ? 'Modelos, llaves y gasto' : c?.subtitle || 'Plataforma de cerebros para escribir')), h('span.sr', '. Cambiar de cerebro')),
+    enAjustes ? null : h('nav.tabs', { 'aria-label': 'Secciones' }, PESTAÑAS.map(([id, nombre, ic]) => h('button.tab', { 'aria-current': r.vista === id ? 'page' : null, onclick: () => ir(S.slug, id) }, icono(ic), nombre))),
     h('div.grow'), chipsEl);
   poner(mnav, [...PESTAÑAS.slice(0, 4), ['mas', 'Más', 'more']].map(([id, nombre, ic]) => h('button', { 'aria-current': (id === r.vista || (id === 'mas' && (r.vista === 'conexiones' || enAjustes))) ? 'page' : null, 'aria-label': nombre, onclick: () => (id === 'mas' ? masMovil() : ir(S.slug || S.cerebros[0]?.slug, id)) }, icono(ic), nombre)));
   refrescarChips();
@@ -141,21 +158,21 @@ function masMovil() {
     h('button.list-row', { style: { textAlign: 'left' }, onclick: () => { d.cerrar(); ir(S.slug, 'conexiones'); } }, icono('link'), h('div.grow', h('b', 'Conexiones'), h('small', 'Salud, significado, aprendido, importar/exportar'))),
     h('button.list-row', { style: { textAlign: 'left' }, onclick: () => { d.cerrar(); selector(); } }, icono('brain'), h('div.grow', h('b', 'Cambiar de cerebro'))),
     h('button.list-row', { style: { textAlign: 'left' }, onclick: () => { d.cerrar(); ir('ajustes'); } }, icono('settings'), h('div.grow', h('b', 'Ajustes y modelos'))),
+    h('button.list-row', { style: { textAlign: 'left' }, onclick: () => { d.cerrar(); ayuda(); } }, icono('help'), h('div.grow', h('b', 'Cómo funciona'), h('small', 'Neurona, sinapsis, lóbulo y más'))),
     h('button.list-row', { style: { textAlign: 'left' }, onclick: () => { d.cerrar(); salir(); } }, icono('logout'), h('div.grow', h('b', 'Cerrar sesión')))) });
 }
 
-const SWATCH = ['#8b5cf6', '#ec4899', '#22d3ee', '#f59e0b', '#34d399', '#f43f5e', '#60a5fa', '#a3e635'];
+const SWATCH = MUESTRAS;
 function nuevoCerebro() {
   let color = SWATCH[S.cerebros.length % SWATCH.length];
   const nombre = h('input', { type: 'text', placeholder: 'Nombre del artista', maxlength: 60, autofocus: true }), sub = h('input', { type: 'text', placeholder: 'Compositor · productor…', maxlength: 120 });
   const plantilla = h('input', { type: 'checkbox', checked: true });
-  const muestras = h('div.row', { style: { flexWrap: 'wrap', gap: '8px' } });
-  const pintarMuestras = () => poner(muestras, SWATCH.map((c) => h('button', { type: 'button', 'aria-label': `Color ${c}`, 'aria-pressed': c === color ? 'true' : 'false', style: { width: '30px', height: '30px', borderRadius: '50%', background: c, boxShadow: c === color ? `0 0 0 2px var(--surface), 0 0 0 4px ${c}` : 'none' }, onclick: () => { color = c; pintarMuestras(); } })));
-  pintarMuestras();
+  const muestras = selectorColor(color, (c) => { color = c; }).el;
   dialogo({ titulo: 'Nuevo cerebro', sub: 'Un cerebro por artista. Después llénalo con sus letras, reglas y referentes.', cuerpo: h('div.stack', h('div.field', h('label', 'Nombre'), nombre), h('div.field', h('label', 'Descripción (opcional)'), sub), h('div.field', h('label', 'Color'), muestras),
     h('label.row', { style: { gap: '10px', cursor: 'pointer' } }, plantilla, h('span', 'Crear con el esqueleto (perfil, reglas de oro, protocolo, bitácora)'))),
   acciones: [{ texto: 'Cancelar', tipo: 'ghost' }, { texto: 'Crear cerebro', tipo: 'primary', onclick: async () => {
     if (!nombre.value.trim()) { aviso('Ponle un nombre al cerebro.', 'bad'); return false; }
+    if (!normalizar(color)) { aviso('El color debe ser como #94a3b8.', 'bad'); return false; }
     const r = await POST('/api/brains', { name: nombre.value, subtitle: sub.value, color, plantilla: plantilla.checked });
     await cargarCerebros(); pintarRail(); aviso(`Cerebro de ${r.cerebro.name} creado.`, 'good'); ir(r.cerebro.slug, 'notas');
   } }] });
@@ -167,7 +184,7 @@ function importarBoveda() {
 
 /* ---------- enrutador ---------- */
 async function enrutar() {
-  if (enrutando) return; enrutando = true;
+  if (enrutando) { repetir = true; return; } enrutando = true;   // un cambio de hash a mitad de camino no se pierde: se atiende al terminar
   try {
     const r = ruta();
     if (vista?.puedeSalir && !(await vista.puedeSalir())) { history.replaceState(null, '', hashPrevio); return; }
@@ -186,8 +203,9 @@ async function enrutar() {
       const mod = await import(`./views/${r.vista}.js`);
       vista = (await mod.montar(pagina, { slug: r.slug, param: r.param })) || null;
     } catch (e) { console.error(e); poner(pagina, h('div.empty', h('b', 'No pude abrir esta sección'), h('span', e.message))); }
+    if (!contenedor.contains(document.activeElement)) contenedor.focus({ preventScroll: true });   // quien navega con teclado o lector empieza en el contenido nuevo
     document.title = `${r.vista === 'ajustes' ? 'Ajustes' : actual()?.name || 'Abrinay Mind'} · Abrinay Mind`;
-  } finally { enrutando = false; }
+  } finally { enrutando = false; if (repetir) { repetir = false; enrutar(); } }
 }
 
 function vacio() {
@@ -196,6 +214,19 @@ function vacio() {
 }
 
 addEventListener('hashchange', () => { if (armazon) enrutar(); });
+
+/* atajos de escritorio (no se activan escribiendo ni con un diálogo abierto) */
+let gPulsada = 0;
+addEventListener('keydown', (e) => {
+  if (!armazon || e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey) return;
+  const t = e.target; if (/INPUT|TEXTAREA|SELECT/.test(t.tagName) || t.isContentEditable || document.querySelector('.scrim')) return;
+  if (e.key === '?') { e.preventDefault(); ayuda(); return; }
+  if (e.key === 'g') { gPulsada = Date.now(); return; }
+  if (Date.now() - gPulsada < 1200) {
+    const v = { c: 'cerebro', n: 'notas', e: 'estudio', s: 'canciones', x: 'conexiones' }[e.key];
+    if (v) { e.preventDefault(); gPulsada = 0; ir(S.slug || S.cerebros[0]?.slug, v); } else if (e.key === 'a') { e.preventDefault(); gPulsada = 0; ir('ajustes'); }
+  }
+});
 addEventListener('beforeunload', (e) => { if (vista?.hayCambios?.()) { e.preventDefault(); e.returnValue = ''; } });
 export { VISTAS };
 arrancar();

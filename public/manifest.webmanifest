@@ -1,0 +1,16 @@
+{
+  "name": "Abrinay Mind",
+  "short_name": "Abrinay Mind",
+  "description": "Cerebros por artista para escribir letras.",
+  "lang": "es",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0a0b0d",
+  "theme_color": "#0a0b0d",
+  "icons": [
+    { "src": "/icons/icono-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icons/icono-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ]
+}
