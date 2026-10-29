@@ -1,4 +1,5 @@
 // Abrinay Mind — piezas pequeñas de interfaz: crear elementos sin innerHTML, iconos, avisos y diálogos.
+import { MUESTRAS, normalizar as normalizarColor } from './color.js';
 
 /** h('div.clase#id', { onclick, 'aria-label': '…', style: {…} }, ...hijos) — los textos siempre entran como texto, nunca como HTML. */
 export function h(sel, props, ...hijos) {
@@ -69,6 +70,7 @@ const P = {
   menu: '<path d="M4 7h16M4 12h16M4 17h16"/>',
   folder: '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
   warn: '<path d="M12 3 2 20h20zM12 10v4M12 17h0"/>',
+  help: '<circle cx="12" cy="12" r="9"/><path d="M9.6 9.4a2.5 2.5 0 1 1 3.5 2.3c-.7.4-1.1.9-1.1 1.7M12 17h0"/>',
   brain: '<path d="M9.5 3A3.5 3.5 0 0 0 6 6.5v.2A3.5 3.5 0 0 0 4 10c0 1 .4 1.8 1 2.4A3.5 3.5 0 0 0 6 18a3.5 3.5 0 0 0 3.5 3 2.5 2.5 0 0 0 2.5-2.5v-14A2.5 2.5 0 0 0 9.5 3zM14.5 3A3.5 3.5 0 0 1 18 6.5v.2A3.5 3.5 0 0 1 20 10c0 1-.4 1.8-1 2.4A3.5 3.5 0 0 1 18 18a3.5 3.5 0 0 1-3.5 3 2.5 2.5 0 0 1-2.5-2.5"/>',
 };
 export function icono(nombre, tam) {
@@ -84,41 +86,67 @@ export function icono(nombre, tam) {
 let contenedorAvisos;
 export function aviso(texto, tipo = '', ms = 4200) {
   if (!contenedorAvisos) { contenedorAvisos = h('div.toasts', { role: 'status', 'aria-live': 'polite' }); document.body.append(contenedorAvisos); }
-  const t = h('div.toast' + (tipo ? '.' + tipo : ''), texto);
+  const t = h('div.toast' + (tipo ? '.' + tipo : ''), { role: tipo === 'bad' ? 'alert' : null }, texto);
   contenedorAvisos.append(t);
-  setTimeout(() => { t.style.transition = 'opacity .25s'; t.style.opacity = '0'; setTimeout(() => t.remove(), 260); }, ms);
+  setTimeout(() => { t.style.transition = 'opacity .2s'; t.style.opacity = '0'; setTimeout(() => t.remove(), 260); }, ms);
   return t;
 }
 export const fallo = (e) => aviso(e?.message || String(e), 'bad', 6500);
 
-/* ---------- diálogos ---------- */
+/* ---------- diálogos (en móvil son hojas inferiores) ---------- */
 const abiertos = [];
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && abiertos.length) abiertos[abiertos.length - 1].cerrar(); });
+const FOCABLES = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), summary, [tabindex]:not([tabindex="-1"])';
+const fondo = () => document.getElementById('root');
+let nIds = 0;
 
 /**
  * dialogo({ titulo, sub, cuerpo, acciones:[{ texto, tipo:'primary'|'danger'|'ghost', onclick(cerrar) → false para no cerrar }], ancho })
  * → { cerrar, el }
+ * Accesible: el fondo queda inerte, el foco se queda dentro (Tab/Mayús+Tab), Esc cierra y el foco vuelve a donde estaba.
+ * En móvil se arrastra hacia abajo desde el asa para cerrar.
  */
 export function dialogo({ titulo, sub, cuerpo, acciones = [], ancho = false, alCerrar }) {
-  const previo = document.activeElement;
+  const previo = document.activeElement, id = `dlg-${++nIds}`;
   const scrim = h('div.scrim', { onmousedown: (e) => { if (e.target === scrim) cerrar(); } });
-  const caja = h('div.modal' + (ancho ? '.wide' : ''), { role: 'dialog', 'aria-modal': 'true', 'aria-label': titulo || 'Diálogo' },
-    titulo ? h('h2', titulo) : null, sub ? h('p.sub', sub) : null, cuerpo || null);
-  let barra = null;
-  const cerrar = () => { const i = abiertos.indexOf(api); if (i >= 0) abiertos.splice(i, 1); scrim.remove(); try { previo?.focus?.(); } catch { /* sin foco previo */ } alCerrar?.(); };
+  const asa = h('div.grab', { 'aria-hidden': 'true' }, h('i'));
+  const caja = h('div.modal' + (ancho ? '.wide' : ''), { role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': titulo ? id : null, 'aria-label': titulo ? null : 'Diálogo', tabindex: '-1' },
+    asa, h('div.mbody', titulo ? h('h2', { id }, titulo) : null, sub ? h('p.sub', sub) : null, cuerpo || null));
+  let barra = null, cerrado = false;
+  const cerrar = () => {
+    if (cerrado) return; cerrado = true;
+    const i = abiertos.indexOf(api); if (i >= 0) abiertos.splice(i, 1);
+    scrim.remove(); if (!abiertos.length) fondo()?.removeAttribute('inert');
+    try { previo?.focus?.(); } catch { /* sin foco previo */ } alCerrar?.();
+  };
   const api = { cerrar, el: caja, scrim };
   if (acciones.length) {
     barra = h('div.actions', acciones.map((a) => h('button.btn' + (a.tipo ? '.' + a.tipo : ''), {
       type: 'button', disabled: a.deshabilitado,
       onclick: async (e) => {
-        const b = e.currentTarget; b.disabled = true;
-        try { const r = await a.onclick?.(cerrar, api); if (r !== false) cerrar(); } catch (err) { fallo(err); } finally { b.disabled = false; }
+        const b = e.currentTarget; b.disabled = true; b.setAttribute('aria-busy', 'true');
+        try { const r = await a.onclick?.(cerrar, api); if (r !== false) cerrar(); } catch (err) { fallo(err); } finally { b.disabled = false; b.removeAttribute('aria-busy'); }
       },
     }, a.texto)));
     caja.append(barra);
   }
-  scrim.append(caja); document.body.append(scrim); abiertos.push(api);
-  setTimeout(() => (caja.querySelector('[autofocus], input, textarea, select') || caja.querySelector('button.primary') || caja).focus?.(), 30);
+  caja.addEventListener('keydown', (e) => {
+    if (e.key !== 'Tab') return;
+    const lista = [...caja.querySelectorAll(FOCABLES)].filter((x) => x.offsetParent !== null);
+    if (!lista.length) { e.preventDefault(); return; }
+    const primero = lista[0], ultimo = lista[lista.length - 1];
+    if (e.shiftKey && (document.activeElement === primero || document.activeElement === caja)) { e.preventDefault(); ultimo.focus(); }
+    else if (!e.shiftKey && document.activeElement === ultimo) { e.preventDefault(); primero.focus(); }
+  });
+  // arrastrar el asa hacia abajo cierra la hoja
+  let y0 = null, dy = 0;
+  asa.addEventListener('pointerdown', (e) => { y0 = e.clientY; dy = 0; asa.setPointerCapture(e.pointerId); caja.style.transition = 'none'; });
+  asa.addEventListener('pointermove', (e) => { if (y0 == null) return; dy = Math.max(0, e.clientY - y0); caja.style.transform = `translateY(${dy}px)`; });
+  const soltar = () => { if (y0 == null) return; y0 = null; caja.style.transition = ''; if (dy > 90) cerrar(); else caja.style.transform = ''; };
+  asa.addEventListener('pointerup', soltar); asa.addEventListener('pointercancel', soltar);
+  scrim.append(caja); document.body.append(scrim); abiertos.push(api); fondo()?.setAttribute('inert', '');
+  // en móvil no se abre el teclado de golpe: el foco va a la hoja; en escritorio, al primer campo
+  setTimeout(() => (esMovil() ? caja : (caja.querySelector('[autofocus], input, textarea, select') || caja.querySelector('button.primary') || caja)).focus?.(), 30);
   return api;
 }
 
@@ -137,6 +165,11 @@ export function pedir({ titulo, sub, campos, ok = 'Aceptar', peligro = false, va
     let hecho = false;
     const refs = {};
     const cuerpo = h('div.stack', campos.map((c) => {
+      if (c.tipo === 'color') {
+        const sel = selectorColor(c.valor);
+        refs[c.id] = { get value() { return sel.valor() || ''; } };
+        return h('div.field', h('span.label', c.etiqueta), sel.el, c.ayuda ? h('span.hint', c.ayuda) : null);
+      }
       const ctl = c.tipo === 'textarea' ? h('textarea', { rows: c.filas || 4, placeholder: c.marcador || '', value: c.valor || '' })
         : c.tipo === 'select' ? h('select', c.opciones.map((o) => h('option', { value: o.valor ?? o, selected: (o.valor ?? o) === c.valor }, o.texto ?? o)))
         : h('input', { type: 'text', placeholder: c.marcador || '', value: c.valor || '', ...(c.lista ? { list: c.lista } : {}) });
@@ -154,6 +187,37 @@ export function pedir({ titulo, sub, campos, ok = 'Aceptar', peligro = false, va
     cuerpo.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target.tagName === 'INPUT') { e.preventDefault(); d.el.querySelector('.actions .btn:last-child')?.click(); } });
   });
 }
+
+/* ---------- selector de color del cerebro ---------- */
+const NOMBRES_COLOR = { '#94a3b8': 'Acero', '#a78bfa': 'Violeta', '#f472b6': 'Rosa', '#22d3ee': 'Cian', '#fbbf24': 'Ámbar', '#34d399': 'Verde', '#fb7185': 'Coral', '#60a5fa': 'Azul' };
+/** Muestras + hexadecimal libre. → { el, valor() → '#rrggbb' | null si el texto no es un color válido } */
+export function selectorColor(inicial, alCambiar) {
+  let actual = normalizarColor(inicial) || MUESTRAS[0];
+  const lista = MUESTRAS.includes(actual) ? MUESTRAS : [actual, ...MUESTRAS];
+  const caja = h('div.swatches', { role: 'radiogroup', 'aria-label': 'Color del cerebro' });
+  const hex = h('input', { type: 'text', value: actual, maxlength: 7, 'aria-label': 'Color en hexadecimal', autocomplete: 'off', spellcheck: 'false', class: 'hex' });
+  const pintar = () => poner(caja, lista.map((c) => h('button', { type: 'button', role: 'radio', class: 'swatch', 'aria-checked': c === actual ? 'true' : 'false', 'aria-label': NOMBRES_COLOR[c] || `Color ${c}`, title: NOMBRES_COLOR[c] || c, style: { '--sw': c },
+    onclick: () => { actual = c; hex.value = c; pintar(); alCambiar?.(c); } })));
+  hex.addEventListener('input', () => { const n = normalizarColor(hex.value); hex.setAttribute('aria-invalid', n ? 'false' : 'true'); if (n) { actual = n; pintar(); alCambiar?.(n); } });
+  pintar();
+  return { el: h('div.stack', { style: { gap: '10px' } }, caja, h('div.row', { style: { gap: '10px' } }, hex, h('span.hint', 'o escribe uno, como #94a3b8'))), valor: () => normalizarColor(hex.value) };
+}
+
+/* ---------- carga: filas con forma de lista, para que el contenido no salte al llegar ---------- */
+export const esqueleto = (n = 6, alto = 44) => h('div.skel-list', { 'aria-hidden': 'true' }, Array.from({ length: n }, (_, i) => h('div.skeleton', { style: { height: alto + 'px', width: (92 - (i % 3) * 14) + '%' } })));
+
+/* ---------- etiquetas: cada <label> dentro de .field queda asociada a su control (lectores de pantalla, toque en la etiqueta) ---------- */
+let nEtiq = 0;
+function vincularEtiquetas() {
+  for (const f of document.querySelectorAll('.field')) {
+    const l = f.querySelector(':scope > label:not([for])'); if (!l) continue;
+    const c = f.querySelector('input:not([type=checkbox]):not([type=radio]), select, textarea'); if (!c) continue;
+    if (!c.id) c.id = `campo-${++nEtiq}`;
+    l.setAttribute('for', c.id);
+  }
+}
+let pendienteEtiq = 0;
+new MutationObserver(() => { if (!pendienteEtiq) pendienteEtiq = setTimeout(() => { pendienteEtiq = 0; vincularEtiquetas(); }, 60); }).observe(document.documentElement, { childList: true, subtree: true });
 
 /* ---------- utilidades ---------- */
 export const debounce = (fn, ms = 250) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };

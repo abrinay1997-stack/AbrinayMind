@@ -1,5 +1,5 @@
 // Abrinay Mind — Ajustes: qué llaves tiene el Worker, qué modelo hace cada tarea, si se permiten modelos que entrenan con tus datos y cuánto llevas gastado.
-import { h, poner, vaciar, icono, aviso, fallo, confirmar, num, usd } from '../ui.js';
+import { h, poner, vaciar, icono, aviso, fallo, confirmar, num, usd, esqueleto } from '../ui.js';
 import { PUT } from '../api.js';
 import { S, modelos, bus } from '../store.js';
 
@@ -82,6 +82,7 @@ export async function montar(el) {
         h('button.btn.small', { onclick: () => { const v = campo.value.trim(); guardar({ tope_mensual_usd: v === '' ? null : Number(v) }); } }, 'Guardar tope'), h('span.faint', { style: { fontSize: '12.5px' } }, 'Al llegar al tope, el cerebro deja de llamar a los modelos hasta el mes siguiente o hasta que lo subas.')));
   }
 
-  try { await cargar(); } catch (e) { poner(raiz, h('div.empty', h('b', 'No pude cargar los ajustes'), h('span', e.message))); }
+  poner(raiz, h('h1', 'Ajustes'), esqueleto(4, 96));
+  try { await cargar(); } catch (e) { poner(raiz, h('div.empty', h('b', 'No pude cargar los ajustes'), h('span', e.message), h('button.btn', { onclick: () => location.reload() }, icono('refresh'), 'Reintentar'))); }
   return {};
 }
