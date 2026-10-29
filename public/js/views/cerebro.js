@@ -91,6 +91,7 @@ export async function montar(el, { param }) {
     h('button', { title: 'Mostrar u ocultar capas y lóbulos', 'aria-label': 'Filtros: capas y lóbulos', 'aria-pressed': matchMedia('(max-height: 500px)').matches ? 'false' : 'true', class: 'solo-movil', onclick: (e) => { const v = !envoltura.classList.toggle('sin-filtros'); e.currentTarget.setAttribute('aria-pressed', v); } }, icono('tag')),
     h('button', { title: 'Recargar el grafo', 'aria-label': 'Recargar el grafo', onclick: async () => { try { const n = await grafo(true); gr.setData(n); gr.setCapas(capas); aviso('Grafo actualizado.', 'good', 1800); } catch (e) { fallo(e); } } }, icono('refresh')));
   const stats = h('div.g-stats', h('span', h('b', num(g.notes)), ' neuronas'), h('span', h('b', num(g.links.length)), ' enlaces'), h('span', h('b', num(g.mentions.length)), ' menciones'), h('span', h('b', num(g.meaning.length)), ' de significado'), h('span', h('b', num(g.learned.length)), ' aprendidas'));
+  let cajon = null, pedido = 0;   // declaradas antes de aplicarVista(), que puede cerrar el cajón al arrancar en la vista Lista
   /* ---- vista Lista: la misma información, navegable con teclado, lector de pantalla y dedos torpes ---- */
   let vistaActual = 'mapa'; try { vistaActual = localStorage.getItem('am:cerebro:vista') === 'lista' ? 'lista' : 'mapa'; } catch { /* por defecto */ }
   const colorLobulo = new Map(gr.lobulos.map((l) => [l.nombre, l.color]));
@@ -118,7 +119,6 @@ export async function montar(el, { param }) {
   aplicarVista();
 
   /* ---- cajón con la nota ---- */
-  let cajon = null, pedido = 0;
   async function abrirCajon(id) {
     cerrarCajon();
     if (!id) return;
