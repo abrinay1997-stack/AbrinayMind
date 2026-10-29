@@ -10,6 +10,7 @@ const CAPAS = [['links', 'Enlaces', 'l-links'], ['mentions', 'Menciones', 'l-men
 export async function montar(el, { param }) {
   const slug = S.slug;
   const lienzo = h('canvas', { 'aria-label': 'Grafo del cerebro: arrastra para girar, rueda para acercar, clic en una neurona para abrirla', tabindex: 0 });
+  lienzo.setAttribute('aria-label', 'Grafo del cerebro. Arrastra para girar, pellizca o usa la rueda para acercar, toca una neurona para abrirla. Para navegar con teclado o lector de pantalla usa la vista Lista.');
   const envoltura = h('div.graph-wrap', lienzo);
   poner(el, envoltura);
   const cargando = h('div.empty', { style: { position: 'absolute', inset: 0 } }, h('div.skeleton', { style: { width: '200px', height: '10px' } }), h('span', 'Despertando las neuronas…'));
@@ -22,6 +23,7 @@ export async function montar(el, { param }) {
     return {};
   }
 
+  if (matchMedia('(max-height: 500px)').matches) envoltura.classList.add('sin-filtros');   // en horizontal el mapa necesita la altura
   const existentes = new Set(g.nodes.map((n) => n.id)), plegados = new Map(g.nodes.map((n) => [fold(n.id), n.id]));
   let capas = { links: true, mentions: false, meaning: false, learned: true };
   try { capas = { ...capas, ...JSON.parse(localStorage.getItem('am:capas') || '{}') }; } catch { /* por defecto */ }
@@ -85,9 +87,34 @@ export async function montar(el, { param }) {
   const bEtiq = h('button', { title: 'Mostrar nombres', 'aria-label': 'Mostrar nombres', 'aria-pressed': 'true', onclick: () => { const v = bEtiq.getAttribute('aria-pressed') !== 'true'; bEtiq.setAttribute('aria-pressed', v); gr.setEtiquetas(v); } }, icono('type'));
   const herramientas = h('div.g-tools.glass',
     h('button', { title: 'Encuadrar todo', 'aria-label': 'Encuadrar todo', onclick: () => gr.ajustar() }, icono('fit')), bGirar, bEtiq,
+    h('button', { title: 'Mostrar u ocultar capas y lóbulos', 'aria-label': 'Filtros: capas y lóbulos', 'aria-pressed': matchMedia('(max-height: 500px)').matches ? 'false' : 'true', class: 'solo-movil', onclick: (e) => { const v = !envoltura.classList.toggle('sin-filtros'); e.currentTarget.setAttribute('aria-pressed', v); } }, icono('tag')),
     h('button', { title: 'Recargar el grafo', 'aria-label': 'Recargar el grafo', onclick: async () => { try { const n = await grafo(true); gr.setData(n); gr.setCapas(capas); aviso('Grafo actualizado.', 'good', 1800); } catch (e) { fallo(e); } } }, icono('refresh')));
   const stats = h('div.g-stats', h('span', h('b', num(g.notes)), ' neuronas'), h('span', h('b', num(g.links.length)), ' enlaces'), h('span', h('b', num(g.mentions.length)), ' menciones'), h('span', h('b', num(g.meaning.length)), ' de significado'), h('span', h('b', num(g.learned.length)), ' aprendidas'));
-  envoltura.append(h('div.g-top', h('div.g-search', icono('search'), entrada, resultados), botonesCapa), lobos, herramientas, stats);
+  /* ---- vista Lista: la misma información, navegable con teclado, lector de pantalla y dedos torpes ---- */
+  let vistaActual = 'mapa'; try { vistaActual = localStorage.getItem('am:cerebro:vista') === 'lista' ? 'lista' : 'mapa'; } catch { /* por defecto */ }
+  const colorLobulo = new Map(gr.lobulos.map((l) => [l.nombre, l.color]));
+  const listaEl = h('div.g-list', { hidden: true, role: 'region', 'aria-label': 'Lista de neuronas' });
+  let tope = 80;
+  const pintarLista = () => {
+    const q = fold(entrada.value.trim());
+    const todas = g.nodes.filter((n) => !q || fold(n.id).includes(q)).sort((a, b) => a.id.localeCompare(b.id, 'es', { numeric: true }));
+    poner(listaEl, h('div.g-list-in',
+      h('p.faint', { style: { margin: '0 0 8px', fontSize: '12.5px' }, role: 'status' }, q ? `${num(todas.length)} de ${num(g.nodes.length)} neuronas` : `${num(g.nodes.length)} neuronas`),
+      todas.length ? h('ul', todas.slice(0, tope).map((n) => h('li', h('button.item', { onclick: () => gr.seleccionar(n.id, { avisar: true }), 'aria-label': `${n.id}, lóbulo ${String(n.g || 'raíz').replace(/^\d+-/, '')}` },
+        h('i.dot', { style: { background: colorLobulo.get(n.g) || 'var(--faint)' } }), h('span.n', n.id), h('span.faint', { style: { fontSize: '12px' } }, String(n.g || '').replace(/^\d+-/, '')))))) : h('div.empty', h('b', 'Nada con ese nombre'), h('span', 'Prueba con otra palabra.')),
+      todas.length > tope ? h('button.btn', { onclick: () => { tope += 120; pintarLista(); } }, `Mostrar más (${num(todas.length - tope)})`) : null));
+  };
+  const aplicarVista = () => {
+    const lista = vistaActual === 'lista';
+    envoltura.classList.toggle('en-lista', lista); listaEl.hidden = !lista; lienzo.hidden = lista; gr.pausar(lista);
+    for (const b of selector.children) b.setAttribute('aria-checked', b.dataset.v === vistaActual ? 'true' : 'false');
+    if (lista) { cerrarCajon(); pintarLista(); } else { gr.redimensionar(); }
+    try { localStorage.setItem('am:cerebro:vista', vistaActual); } catch { /* sin almacenamiento */ }
+  };
+  const selector = h('div.seg.glass', { role: 'radiogroup', 'aria-label': 'Cómo ver el cerebro' }, [['mapa', 'Mapa', 'graph'], ['lista', 'Lista', 'menu']].map(([v, t, ic]) => h('button', { type: 'button', role: 'radio', 'data-v': v, 'aria-checked': 'false', onclick: () => { vistaActual = v; aplicarVista(); } }, icono(ic, 16), t)));
+  entrada.addEventListener('input', () => { if (vistaActual === 'lista') { tope = 80; pintarLista(); } });
+  envoltura.append(h('div.g-top', h('div.g-search', icono('search'), entrada, resultados), selector, botonesCapa), listaEl, lobos, herramientas, stats);
+  aplicarVista();
 
   /* ---- cajón con la nota ---- */
   let cajon = null, pedido = 0;
@@ -97,8 +124,9 @@ export async function montar(el, { param }) {
     const mio = ++pedido;
     const cuerpo = h('div.body', h('div.skeleton', { style: { height: '14px', width: '60%', marginBottom: '10px' } }), h('div.skeleton', { style: { height: '90px' } }));
     const titulo = h('h2', id);
-    cajon = h('aside.drawer', { 'aria-label': `Nota ${id}` }, h('header', titulo, h('button.ibtn', { 'aria-label': 'Cerrar', onclick: () => gr.seleccionar(null, { avisar: true }) }, icono('x'))), cuerpo);
-    envoltura.append(cajon); stats.style.display = 'none';
+    const asa = h('div.grab', { 'aria-hidden': 'true' }, h('i'));
+    cajon = h('aside.drawer', { 'aria-label': `Nota ${id}` }, asa, h('header', titulo, h('button.ibtn', { 'aria-label': 'Cerrar', onclick: () => gr.seleccionar(null, { avisar: true }) }, icono('x'))), cuerpo);
+    envoltura.append(cajon); envoltura.classList.add('con-cajon'); stats.style.display = 'none'; arrastrable(cajon, asa);
     if (!esMovil()) herramientas.style.right = '456px';
     let n;
     try { n = await api().get(`note?name=${encodeURIComponent(id)}`); } catch (e) { if (mio === pedido) poner(cuerpo, h('div.empty', h('b', 'No pude abrir la nota'), h('span', e.message))); return; }
@@ -120,7 +148,21 @@ export async function montar(el, { param }) {
       h('button.btn.small', { 'aria-pressed': anclada, onclick: (e) => { const ya = S.anclas.has(id); anclar(id, !ya); e.currentTarget.lastChild.textContent = !ya ? 'Anclada' : 'Anclar para escribir'; aviso(!ya ? `«${id}» se leerá en la próxima letra.` : 'Desanclada.', '', 2200); } }, icono('pin'), anclada ? 'Anclada' : 'Anclar para escribir'),
       h('button.btn.ghost.small', { onclick: () => copiar(`[[${id}]]`) }, icono('copy'), 'Copiar enlace')));
   }
-  function cerrarCajon() { cajon?.remove(); cajon = null; herramientas.style.right = ''; stats.style.display = ''; }
+  /** Hoja inferior en móvil: arrastrar el asa hacia abajo la cierra y hacia arriba la abre del todo; tocarla alterna. */
+  function arrastrable(hoja, asa) {
+    let y0 = null, dy = 0, mov = 0;
+    asa.addEventListener('pointerdown', (e) => { y0 = e.clientY; dy = 0; mov = 0; asa.setPointerCapture(e.pointerId); hoja.style.transition = 'none'; });
+    asa.addEventListener('pointermove', (e) => { if (y0 == null) return; dy = e.clientY - y0; mov = Math.max(mov, Math.abs(dy)); if (!hoja.classList.contains('full') || dy > 0) hoja.style.transform = `translateY(${Math.max(0, dy)}px)`; });
+    const soltar = () => {
+      if (y0 == null) return; y0 = null; hoja.style.transition = ''; hoja.style.transform = '';
+      if (mov < 6) hoja.classList.toggle('full');
+      else if (dy > 110 && !hoja.classList.contains('full')) gr.seleccionar(null, { avisar: true });
+      else if (dy > 60) hoja.classList.remove('full');
+      else if (dy < -50) hoja.classList.add('full');
+    };
+    asa.addEventListener('pointerup', soltar); asa.addEventListener('pointercancel', soltar);
+  }
+  function cerrarCajon() { cajon?.remove(); cajon = null; envoltura.classList.remove('con-cajon'); herramientas.style.right = ''; stats.style.display = ''; }
 
   const teclas = (e) => {
     if (e.key === 'Escape' && gr.sel >= 0) gr.seleccionar(null, { avisar: true });

@@ -24,6 +24,8 @@ export class Graph3D {
     if (this.reducir) this.girar = false;
     this.N = 0; this.punteros = new Map(); this.arrastre = null; this.ancho = 0; this.alto = 0; this.dpr = 1;
     this._loop = this._loop.bind(this);
+    this.tactil = window.matchMedia?.('(pointer: coarse)').matches; this.pausado = false;
+    this._vis = () => { if (!document.hidden) this.despertar(); }; document.addEventListener('visibilitychange', this._vis);
     this._ro = new ResizeObserver(() => this.redimensionar()); this._ro.observe(canvas.parentElement || canvas);
     this._eventos();
     this.redimensionar();
@@ -153,9 +155,11 @@ export class Graph3D {
   }
 
   /* ---------- el bucle ---------- */
-  despertar() { this.sucio = true; if (!this.raf && this.vivo) this.raf = requestAnimationFrame(this._loop); }
+  despertar() { this.sucio = true; if (!this.raf && this.vivo && !this.pausado && !document.hidden) this.raf = requestAnimationFrame(this._loop); }
+  /** Pausa el dibujo (p. ej. cuando el lienzo está oculto por la vista de lista o la pestaña está en segundo plano). */
+  pausar(b) { this.pausado = !!b; if (this.pausado && this.raf) { cancelAnimationFrame(this.raf); this.raf = 0; } else if (!this.pausado) this.despertar(); }
   _loop(t) {
-    this.raf = 0; if (!this.vivo || !this.N) return;
+    this.raf = 0; if (!this.vivo || !this.N || this.pausado || document.hidden) return;
     let sigue = false;
     if (this.alfa > .02) { const pasos = this.N > 700 ? 1 : 2; for (let k = 0; k < pasos; k++) { this._paso(this.alfa); this.alfa *= .992; } sigue = true; if (this.alfa <= .02) this.guardarLayout(); }
     if (this.girar && !this.arrastre) { this.cam.yaw += this.mini ? .0016 : .0007; sigue = true; }
@@ -172,7 +176,7 @@ export class Graph3D {
 
   redimensionar() {
     const el = this.c.parentElement || this.c, r = el.getBoundingClientRect();
-    this.dpr = Math.min(2, window.devicePixelRatio || 1);
+    this.dpr = Math.min(this.tactil && this.N > 300 ? 1.5 : 2, window.devicePixelRatio || 1);   // móviles modestos: menos píxeles que pintar
     this.ancho = Math.max(10, r.width); this.alto = Math.max(10, r.height);
     this.c.width = Math.round(this.ancho * this.dpr); this.c.height = Math.round(this.alto * this.dpr);
     this.despertar();
@@ -292,7 +296,7 @@ export class Graph3D {
       if (this.etiquetas && !this.marcas && this.cam.dist < 520) for (const i of orden.slice(-60)) quiero.push([i, 7]);
       quiero.sort((a, b) => a[1] - b[1]);
       const cajas = []; let n = 0, ya = new Set();
-      ctx.font = `${this.mini ? 10.5 : 12}px ui-sans-serif, system-ui, sans-serif`; ctx.textBaseline = 'middle';
+      ctx.font = `${this.mini ? 10.5 : this.tactil ? 13 : 12}px ui-sans-serif, system-ui, sans-serif`; ctx.textBaseline = 'middle';
       for (const [i] of quiero) {
         if (ya.has(i) || !vis[i] || !this.sc[i] || n > 70) continue; ya.add(i);
         const txt = g.nodes[i].id.length > 34 ? g.nodes[i].id.slice(0, 33) + '…' : g.nodes[i].id, w = ctx.measureText(txt).width, x = this.sx[i] + this._radio(i) + 5, y = this.sy[i];
@@ -311,7 +315,7 @@ export class Graph3D {
     let mejor = -1, zm = 1e9;
     for (let i = 0; i < this.N; i++) {
       if (!this.visible[i] || !this.sc[i]) continue;
-      const dx = this.sx[i] - mx, dy = this.sy[i] - my, r = this._radio(i) + 5;
+      const dx = this.sx[i] - mx, dy = this.sy[i] - my, r = this._radio(i) + (this.tactil ? 14 : 5);   // con el dedo hace falta más margen
       if (dx * dx + dy * dy <= r * r && this.zc[i] < zm) { zm = this.zc[i]; mejor = i; }
     }
     return mejor;
@@ -322,7 +326,7 @@ export class Graph3D {
     c.addEventListener('contextmenu', (e) => e.preventDefault());
     c.addEventListener('pointerdown', (e) => {
       c.setPointerCapture(e.pointerId); const [x, y] = this._xy(e);
-      this.punteros.set(e.pointerId, { x, y });
+      this.tactil = e.pointerType === 'touch' || (e.pointerType === 'mouse' ? false : this.tactil); this.punteros.set(e.pointerId, { x, y });
       this.arrastre = { x0: x, y0: y, t0: performance.now(), mov: 0, modo: this.punteros.size > 1 || e.button === 2 || e.shiftKey || e.button === 1 ? 'pan' : 'rotar', d0: this._distanciaPunteros() };
       this.o.onInteraccion?.();
     });
@@ -372,7 +376,7 @@ export class Graph3D {
   }
 
   destruir() {
-    this.vivo = false; if (this.raf) cancelAnimationFrame(this.raf); this._ro.disconnect();
+    this.vivo = false; if (this.raf) cancelAnimationFrame(this.raf); this._ro.disconnect(); document.removeEventListener('visibilitychange', this._vis);
     if (this.alfa < 1) this.guardarLayout();
   }
 }

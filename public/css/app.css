@@ -276,3 +276,26 @@ input[aria-invalid="true"] { border-color: var(--bad); }
 }
 @media (max-width: 900px) { .head { height: calc(var(--head) + var(--sai-t)); padding-top: var(--sai-t); } }
 .modal .mbody:last-child { padding-bottom: calc(18px + var(--sai-b)); }
+
+/* ---------- Cerebro: vista Lista, filtros y hoja de nota ---------- */
+.seg { display: inline-flex; padding: 4px; gap: 2px; } .seg button { display: inline-flex; align-items: center; gap: 6px; height: 36px; padding: 0 14px; border-radius: 10px; font-size: 13px; font-weight: 550; color: var(--muted); }
+.seg button[aria-checked="true"] { background: var(--surface-3); color: var(--text); } .seg svg { width: 16px; height: 16px; }
+.solo-movil { display: none; } .drawer .grab { display: none; }
+.graph-wrap.en-lista { display: flex; flex-direction: column; }
+.graph-wrap.en-lista .g-top { position: static; padding: 14px 16px 8px; flex: none; } .graph-wrap.en-lista .lobes, .graph-wrap.en-lista .g-tools, .graph-wrap.en-lista .g-stats, .graph-wrap.en-lista .layers, .graph-wrap.en-lista .results { display: none; }
+.g-list { flex: 1; min-height: 0; overflow: auto; padding: 4px 16px 24px; } .g-list-in { max-width: 720px; margin: 0 auto; } .g-list ul { list-style: none; margin: 0 0 14px; padding: 0; display: grid; gap: 2px; }
+.g-list .item { min-height: 44px; font-size: var(--t-md); } .g-list .item .dot { width: 9px; height: 9px; }
+.graph-wrap.sin-filtros .layers, .graph-wrap.sin-filtros .lobes { display: none; }
+@media (max-width: 900px) {
+  .solo-movil { display: grid; }
+  .g-search { flex: 1 1 100%; width: 100%; } .g-top { gap: 8px; } .layers { flex: 1 1 0; min-width: 0; }
+  .lobes { max-width: calc(100% - 78px); }
+  .drawer { top: auto; left: 0; right: 0; bottom: 0; width: 100%; height: 62%; border-left: 0; border-top: 1px solid var(--line-2); border-radius: 22px 22px 0 0; animation: sheet .26s var(--ease); transition: height var(--dur-3) var(--ease), transform var(--dur-3) var(--ease); }
+  .drawer.full { height: calc(100% - 8px); }
+  .drawer .grab { display: flex; justify-content: center; align-items: center; height: 28px; flex: none; touch-action: none; cursor: grab; } .drawer .grab i { width: 38px; height: 4px; border-radius: 4px; background: var(--line-3); }
+  .drawer header { padding-top: 2px; } .drawer .body { padding-bottom: 8px; }
+  .drawer footer { display: grid; grid-template-columns: 1fr 1fr; padding-bottom: calc(12px + var(--sai-b)); } .drawer footer .btn:first-child { grid-column: 1 / -1; }
+  .graph-wrap.con-cajon .lobes, .graph-wrap.con-cajon .g-tools { display: none; }
+  .graph-wrap.en-lista .g-top { padding: 10px 12px 6px; } .g-list { padding: 4px 12px 16px; }
+}
+@media (max-height: 500px) { .g-search { flex: 0 1 420px; width: auto; } .g-tools { padding: 3px; } .g-tools button { min-height: 38px; min-width: 38px; } }
