@@ -71,29 +71,36 @@ export async function montar(el, { param }) {
     [['', 'Según Ajustes'], ['ligera', 'Ligera'], ['normal', 'Normal'], ['profunda', 'Profunda']].map(([v, t]) => h('option', { value: v, selected: f.profundidad === v }, t)));
   const verSel = h('select', { 'aria-label': 'Versiones', onchange: () => { f.versiones = verSel.value; guardarForm(); } }, ['1', '2', '3'].map((v) => h('option', { value: v, selected: f.versiones === v }, v === '1' ? '1 versión' : `${v} versiones`)));
 
+  const avanzadoAbierto = (() => { try { return localStorage.getItem('am:avanzado') === '1'; } catch { return false; } })();
+  const avanzado = h('details.avanzado', { open: avanzadoAbierto, ontoggle: (e) => { try { localStorage.setItem('am:avanzado', e.currentTarget.open ? '1' : '0'); } catch { /* sin almacenamiento */ } } },
+    h('summary', icono('chevron', 16), 'Avanzado', h('small', 'mood, referencia, estructura, semillas, modelo…')),
+    h('div.stack', { style: { gap: '13px', paddingTop: '12px' } },
+      campo('mood', 'Mood', 'text', { marcador: 'Oscuro, honesto, sin adornos' }),
+      campo('referencia', 'Referencia sonora o artística', 'text', { marcador: 'Un beat, un artista, un tema' }),
+      campo('estructura', 'Estructura', 'text', { marcador: 'Intro, 2 versos, coro, puente, outro' }),
+      campo('concepto', 'Idea central propuesta', 'text', { marcador: 'La frase que vuelve como mantra' }),
+      campo('semillas', 'Líneas semilla (tuyas, no se tocan)', 'textarea', { filas: 3, marcador: 'Líneas que ya tienes y quieres conservar' }),
+      campo('restricciones', 'Restricciones', 'text', { marcador: 'Sin groserías, sin hablar de…' }),
+      h('div.row2', h('div.field', h('label', 'Versiones'), verSel), h('div.field', h('label', 'Profundidad de lectura'), profSel)),
+      h('div.field', h('label', 'Modelo'), modeloSelForm, h('span.hint', 'Automático usa lo que elegiste en Ajustes para escribir letras.')),
+      h('div.field', h('label', 'Notas ancladas'), anclasEl, h('div.row', anclaEntrada, datalist), h('span.hint', 'El cerebro las leerá enteras. También puedes anclar desde Cerebro.'))));
   const constructor_ = h('aside.builder', { 'aria-label': 'Constructor de canciones' },
-    h('h2', icono('sparkle', 18), 'Constructor de canciones'),
+    h('div.row.between', h('h2', icono('sparkle', 18), 'Constructor'), h('button.btn.ghost.small.solo-movil', { onclick: () => estudio.classList.remove('show-builder') }, icono('x'), 'Cerrar')),
     campo('titulo', 'Título o concepto', 'text', { marcador: 'Ej.: Lo que no me dijeron' }),
     meta?.modos?.length ? h('div.field', h('label', 'Modo'), modosEl) : null,
     h('div.row2', campo('genero', 'Género', 'text', { marcador: 'Rap introspectivo' }), campo('bpm', 'BPM', 'number', { marcador: '90' })),
     campo('tema', 'Tema o situación', 'textarea', { marcador: 'De qué trata y qué pasó…' }),
-    campo('mood', 'Mood', 'text', { marcador: 'Oscuro, honesto, sin adornos' }),
-    campo('referencia', 'Referencia sonora o artística', 'text', { marcador: 'Un beat, un artista, un tema' }),
-    campo('estructura', 'Estructura', 'text', { marcador: 'Intro, 2 versos, coro, puente, outro' }),
-    campo('concepto', 'Idea central propuesta', 'text', { marcador: 'La frase que vuelve como mantra' }),
-    campo('semillas', 'Líneas semilla (tuyas, no se tocan)', 'textarea', { filas: 3, marcador: 'Líneas que ya tienes y quieres conservar' }),
-    campo('restricciones', 'Restricciones', 'text', { marcador: 'Sin groserías, sin hablar de…' }),
-    h('div.row2', h('div.field', h('label', 'Versiones'), verSel), h('div.field', h('label', 'Profundidad de lectura'), profSel)),
-    h('div.field', h('label', 'Modelo'), modeloSelForm, h('span.hint', 'Automático usa lo que elegiste en Ajustes para escribir letras.')),
-    h('div.field', h('label', 'Notas ancladas'), anclasEl, h('div.row', anclaEntrada, datalist), h('span.hint', 'El cerebro las leerá enteras. También puedes anclar desde Cerebro.')),
-    h('button.btn.primary', { style: { width: '100%' }, onclick: () => escribirLetra('letra') }, icono('sparkle'), 'Escribir letra'),
+    avanzado,
+    h('div.acciones-fijas', h('button.btn.primary', { style: { width: '100%' }, onclick: () => escribirLetra('letra') }, icono('sparkle'), 'Escribir letra')),
     h('div.row', { style: { gap: '8px' } }, h('button.btn.small', { style: { flex: 1 }, title: 'Usa el modelo de «Borradores» (más barato) para explorar', onclick: () => escribirLetra('borrador') }, 'Borrador económico'),
       h('button.btn.ghost.small', { onclick: () => { for (const k of Object.keys(f)) if (!['modelo', 'profundidad'].includes(k)) f[k] = k === 'versiones' ? '1' : ''; guardarForm(); for (const n of [...S.anclas]) anclar(n, false); ir(slug, 'estudio', chatId); } }, 'Limpiar')));
 
   /* ---------- la conversación (centro) ---------- */
   const chatSel = h('select.chat-sel', { 'aria-label': 'Conversación', onchange: async () => { if (chatSel.value === '_nueva') await nuevaConversacion(); else await abrirChat(chatSel.value); } });
-  const msgsInner = h('div.inner'), msgsEl = h('div.msgs', { 'aria-live': 'polite' }, msgsInner);
-  const entrada = h('textarea', { rows: 1, placeholder: `Pregúntale al cerebro de ${brain?.name || 'este artista'}…`, 'aria-label': 'Mensaje' });
+  const msgsInner = h('div.inner'), msgsEl = h('div.msgs', { role: 'log', 'aria-label': 'Conversación' }, msgsInner);
+  const anuncio = h('div.sr', { role: 'status', 'aria-live': 'polite' });   // el lector avisa de lo importante sin leer la letra a cada fragmento
+  const anunciar = (t) => { anuncio.textContent = ''; setTimeout(() => { anuncio.textContent = t; }, 50); };
+  const entrada = h('textarea', { rows: 1, placeholder: esMovil() ? 'Pregúntale al cerebro…' : `Pregúntale al cerebro de ${brain?.name || 'este artista'}…`, 'aria-label': 'Mensaje' });
   const enviarBtn = h('button.send', { 'aria-label': 'Enviar', title: 'Enviar (Enter)', onclick: () => (ctrl ? ctrl.abort() : enviarTexto()) }, icono('send'));
   const rapidas = h('div.quick', RAPIDAS.map(([t, txt]) => h('button', { onclick: () => { entrada.value = txt; ajustarAlto(); entrada.focus(); } }, t)));
   const ajustarAlto = () => { entrada.style.height = 'auto'; entrada.style.height = Math.min(180, entrada.scrollHeight) + 'px'; };
@@ -103,11 +110,12 @@ export async function montar(el, { param }) {
   const constructorBtn = h('button.btn.small', { onclick: () => estudio.classList.toggle('show-builder'), style: { display: esMovil() ? '' : 'none' } }, icono('sparkle'), 'Constructor');
   const chat = h('section.chat',
     h('div.top', constructorBtn, chatSel,
-      h('button.btn.ghost.small', { title: 'Nueva conversación', 'aria-label': 'Nueva conversación', onclick: nuevaConversacion }, icono('plus')),
-      h('button.btn.ghost.small', { title: 'Renombrar', 'aria-label': 'Renombrar conversación', onclick: renombrarChat }, icono('edit')),
-      h('button.btn.ghost.small', { title: 'Borrar conversación', 'aria-label': 'Borrar conversación', onclick: borrarChat }, icono('trash')),
+      h('button.btn.ghost.small.solo-movil', { 'aria-label': 'Más acciones de la conversación', 'aria-haspopup': 'dialog', onclick: menuChat }, icono('more')),
+      h('button.btn.ghost.small.solo-escritorio', { title: 'Nueva conversación', 'aria-label': 'Nueva conversación', onclick: nuevaConversacion }, icono('plus')),
+      h('button.btn.ghost.small.solo-escritorio', { title: 'Renombrar', 'aria-label': 'Renombrar conversación', onclick: renombrarChat }, icono('edit')),
+      h('button.btn.ghost.small.solo-escritorio', { title: 'Borrar conversación', 'aria-label': 'Borrar conversación', onclick: borrarChat }, icono('trash')),
       h('div', { style: { flex: 1 } }), h('div.field.solo-escritorio', { style: { width: '230px', maxWidth: '40vw' } }, modeloSelTop), mapaBtn),
-    msgsEl, h('div.composer', h('div.inner', rapidas, h('div.box', entrada, enviarBtn))));
+    msgsEl, anuncio, h('div.composer', h('div.inner', rapidas, h('div.box', entrada, enviarBtn))));
 
   const mapaEl = h('aside.mapcol', { 'aria-label': 'Lo que lee el cerebro' });
   const estudio = h('div.studio' + (verMapa ? '.with-map' : ''), constructor_, chat, verMapa ? mapaEl : null);
@@ -121,10 +129,20 @@ export async function montar(el, { param }) {
   function bloquesDeLetra(texto, m, { enVivo = false } = {}) {
     return vistaDeLetra(texto, { ...opcionesMd, enVivo, pie: m?.id ? (v, p) => h('div.row.wrap', { style: { gap: '6px' } },
       h('button.btn.small', { onclick: () => guardarCancion(m, v, p.versiones.length > 1) }, icono('songs'), 'Guardar como canción'),
-      h('button.btn.ghost.small', { onclick: () => copiar(v.crudo) }, icono('copy'), 'Copiar'),
-      h('button.btn.ghost.small', { onclick: () => { entrada.value = `Refina la ${v.etiqueta ? 'versión ' + v.etiqueta : 'letra'}: `; ajustarAlto(); entrada.focus(); } }, icono('edit'), 'Refinar')) : null });
+      h('button.btn.ghost.small.solo-escritorio', { onclick: () => copiar(v.crudo) }, icono('copy'), 'Copiar'),
+      h('button.btn.ghost.small.solo-escritorio', { onclick: () => refinar(v) }, icono('edit'), 'Refinar'),
+      h('button.btn.small.solo-movil', { 'aria-label': 'Más acciones de esta versión', 'aria-haspopup': 'dialog', onclick: () => menuVersion(m, v) }, icono('more'))) : null });
   }
 
+  const refinar = (v) => { entrada.value = `Refina la ${v.etiqueta ? 'versión ' + v.etiqueta : 'letra'}: `; ajustarAlto(); entrada.focus(); };
+  function menuVersion(m, v) {
+    const fila = (ic, t, fn) => h('button.list-row', { style: { textAlign: 'left', width: '100%' }, onclick: () => { d.cerrar(); fn(); } }, icono(ic), h('div.grow', h('b', t)));
+    const d = dialogo({ titulo: v.etiqueta ? `Versión ${v.etiqueta}` : 'Esta letra', cuerpo: h('div.stack', { style: { gap: '8px' } }, fila('copy', 'Copiar esta versión', () => copiar(v.crudo)), fila('edit', 'Refinar esta versión', () => refinar(v)), fila('copy', 'Copiar todo el mensaje', () => copiar(m.content))) });
+  }
+  function menuChat() {
+    const fila = (ic, t, fn, peligro) => h('button.list-row', { style: { textAlign: 'left', width: '100%', ...(peligro ? { color: 'var(--bad)' } : {}) }, onclick: () => { d.cerrar(); fn(); } }, icono(ic), h('div.grow', h('b', t)));
+    const d = dialogo({ titulo: 'Conversación', cuerpo: h('div.stack', { style: { gap: '8px' } }, fila('plus', 'Nueva conversación', nuevaConversacion), fila('edit', 'Renombrar', renombrarChat), fila('sparkle', 'Modelo y profundidad', () => estudio.classList.add('show-builder')), fila('trash', 'Borrar conversación', borrarChat, true)) });
+  }
   function cajaLeida(info) {
     if (!info) return null;
     const leidas = info.leidas || [], fijas = info.fijas || [];
@@ -226,6 +244,7 @@ export async function montar(el, { param }) {
     const leida = h('div'), pie = h('div.msg-foot');
     const respuesta = h('div.msg.bot', quien, leida, cuerpo, pie);
     msgsInner.append(burbuja, respuesta); abajo();
+    anunciar('El cerebro está leyendo y escribiendo…');
     ctrl = new AbortController(); enviarBtn.replaceChildren(icono('x')); enviarBtn.title = 'Detener'; enviarBtn.setAttribute('aria-label', 'Detener');
     let acumulado = '', info = null, hecho = null, fallido = null, pendiente = 0;
     const pintarCuerpo = () => { pendiente = 0; const pegado = cercaDelFinal(); poner(cuerpo, acumulado ? bloquesDeLetra(acumulado, null, { enVivo: true }) : null); if (pegado) abajo(); };
@@ -250,7 +269,7 @@ export async function montar(el, { param }) {
       }
     }
     cancelAnimationFrame(pendiente); orbe.classList.remove('think'); pintarCuerpo();
-    if (fallido) fallo(new Error(fallido));
+    if (fallido) fallo(new Error(fallido)); else anunciar('La respuesta está lista.');
     ctrl = null; reponerBoton();
     bus.dispatchEvent(new Event('gasto'));
     try { await abrirChat(id); await cargarChats(); } catch { /* ya está en pantalla lo esencial */ }

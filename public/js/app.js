@@ -6,6 +6,19 @@ import * as importador from './importar.js';
 import { MUESTRAS, normalizar } from './color.js';
 
 const raiz = document.getElementById('root');
+
+/* Teclado virtual: el viewport visual se encoge pero el de diseño no (iOS). Ajustamos la altura de la app a lo que se ve y
+   escondemos la barra inferior mientras se escribe, para que el compositor quede justo sobre el teclado. */
+const vv = window.visualViewport;
+if (vv) {
+  const ajustar = () => {
+    const st = document.documentElement.style, abierto = window.innerHeight - vv.height > 140;
+    st.setProperty('--app-h', vv.height + 'px');
+    document.documentElement.classList.toggle('teclado', abierto);
+    if (abierto && window.scrollY) window.scrollTo(0, 0);
+  };
+  vv.addEventListener('resize', ajustar); vv.addEventListener('scroll', ajustar); ajustar();
+}
 const PESTAÑAS = [['cerebro', 'Cerebro', 'graph'], ['notas', 'Notas', 'notes'], ['estudio', 'Estudio', 'studio'], ['canciones', 'Canciones', 'songs'], ['conexiones', 'Conexiones', 'link']];
 let vista = null, contenedor = null, armazon = null, enrutando = false, repetir = false, hashPrevio = location.hash;
 
