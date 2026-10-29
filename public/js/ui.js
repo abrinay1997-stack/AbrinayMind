@@ -1,4 +1,5 @@
 // Abrinay Mind — piezas pequeñas de interfaz: crear elementos sin innerHTML, iconos, avisos y diálogos.
+import { MUESTRAS, normalizar as normalizarColor } from './color.js';
 
 /** h('div.clase#id', { onclick, 'aria-label': '…', style: {…} }, ...hijos) — los textos siempre entran como texto, nunca como HTML. */
 export function h(sel, props, ...hijos) {
@@ -137,6 +138,11 @@ export function pedir({ titulo, sub, campos, ok = 'Aceptar', peligro = false, va
     let hecho = false;
     const refs = {};
     const cuerpo = h('div.stack', campos.map((c) => {
+      if (c.tipo === 'color') {
+        const sel = selectorColor(c.valor);
+        refs[c.id] = { get value() { return sel.valor() || ''; } };
+        return h('div.field', h('span.label', c.etiqueta), sel.el, c.ayuda ? h('span.hint', c.ayuda) : null);
+      }
       const ctl = c.tipo === 'textarea' ? h('textarea', { rows: c.filas || 4, placeholder: c.marcador || '', value: c.valor || '' })
         : c.tipo === 'select' ? h('select', c.opciones.map((o) => h('option', { value: o.valor ?? o, selected: (o.valor ?? o) === c.valor }, o.texto ?? o)))
         : h('input', { type: 'text', placeholder: c.marcador || '', value: c.valor || '', ...(c.lista ? { list: c.lista } : {}) });
@@ -153,6 +159,21 @@ export function pedir({ titulo, sub, campos, ok = 'Aceptar', peligro = false, va
     ] });
     cuerpo.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target.tagName === 'INPUT') { e.preventDefault(); d.el.querySelector('.actions .btn:last-child')?.click(); } });
   });
+}
+
+/* ---------- selector de color del cerebro ---------- */
+const NOMBRES_COLOR = { '#94a3b8': 'Acero', '#a78bfa': 'Violeta', '#f472b6': 'Rosa', '#22d3ee': 'Cian', '#fbbf24': 'Ámbar', '#34d399': 'Verde', '#fb7185': 'Coral', '#60a5fa': 'Azul' };
+/** Muestras + hexadecimal libre. → { el, valor() → '#rrggbb' | null si el texto no es un color válido } */
+export function selectorColor(inicial, alCambiar) {
+  let actual = normalizarColor(inicial) || MUESTRAS[0];
+  const lista = MUESTRAS.includes(actual) ? MUESTRAS : [actual, ...MUESTRAS];
+  const caja = h('div.swatches', { role: 'radiogroup', 'aria-label': 'Color del cerebro' });
+  const hex = h('input', { type: 'text', value: actual, maxlength: 7, 'aria-label': 'Color en hexadecimal', autocomplete: 'off', spellcheck: 'false', class: 'hex' });
+  const pintar = () => poner(caja, lista.map((c) => h('button', { type: 'button', role: 'radio', class: 'swatch', 'aria-checked': c === actual ? 'true' : 'false', 'aria-label': NOMBRES_COLOR[c] || `Color ${c}`, title: NOMBRES_COLOR[c] || c, style: { '--sw': c },
+    onclick: () => { actual = c; hex.value = c; pintar(); alCambiar?.(c); } })));
+  hex.addEventListener('input', () => { const n = normalizarColor(hex.value); hex.setAttribute('aria-invalid', n ? 'false' : 'true'); if (n) { actual = n; pintar(); alCambiar?.(n); } });
+  pintar();
+  return { el: h('div.stack', { style: { gap: '10px' } }, caja, h('div.row', { style: { gap: '10px' } }, hex, h('span.hint', 'o escribe uno, como #94a3b8'))), valor: () => normalizarColor(hex.value) };
 }
 
 /* ---------- utilidades ---------- */

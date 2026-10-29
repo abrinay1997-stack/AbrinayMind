@@ -25,7 +25,7 @@ export async function montar(el, { param }) {
   const existentes = new Set(g.nodes.map((n) => n.id)), plegados = new Map(g.nodes.map((n) => [fold(n.id), n.id]));
   let capas = { links: true, mentions: false, meaning: false, learned: true };
   try { capas = { ...capas, ...JSON.parse(localStorage.getItem('am:capas') || '{}') }; } catch { /* por defecto */ }
-  const gr = new Graph3D(lienzo, { accent: getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#8b5cf6', clave: `am:layout:${slug}`, onSelect: abrirCajon, onHover: () => {} });
+  const gr = new Graph3D(lienzo, { accent: getComputedStyle(document.documentElement).getPropertyValue('--accent-ui').trim() || '#94a3b8', clave: `am:layout:${slug}`, onSelect: abrirCajon, onHover: () => {} });
   gr.setData(g); gr.setCapas(capas);
 
   /* ---- búsqueda ---- */

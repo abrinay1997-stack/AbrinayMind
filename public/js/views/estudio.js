@@ -279,7 +279,7 @@ export async function montar(el, { param }) {
     try {
       const g = await grafo();
       if (!mapaVivo || !verMapa) return;
-      mapa?.destruir(); mapa = new Graph3D(lienzo, { mini: true, accent: getComputedStyle(document.documentElement).getPropertyValue('--accent').trim(), clave: `am:layout:${slug}` });
+      mapa?.destruir(); mapa = new Graph3D(lienzo, { mini: true, accent: getComputedStyle(document.documentElement).getPropertyValue('--accent-ui').trim(), clave: `am:layout:${slug}` });
       mapa.setData(g); if (ultimoInfo) marcarMapa(ultimoInfo, false);
     } catch { /* sin mapa: el chat sigue funcionando */ }
   }

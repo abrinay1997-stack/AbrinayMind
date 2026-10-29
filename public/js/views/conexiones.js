@@ -140,7 +140,7 @@ export async function montar(el) {
   }
   async function editarCerebro() {
     const c = S.cerebros.find((x) => x.slug === slug);
-    const v = await pedir({ titulo: 'Este cerebro', ok: 'Guardar', campos: [{ id: 'name', etiqueta: 'Nombre', valor: c.name }, { id: 'subtitle', etiqueta: 'Descripción', valor: c.subtitle || '' }, { id: 'color', etiqueta: 'Color', valor: c.color, ayuda: 'Hexadecimal, como #8b5cf6' }], validar: (x) => (!x.name.trim() ? 'El nombre no puede estar vacío.' : !/^#[0-9a-f]{6}$/i.test(x.color.trim()) ? 'El color debe ser como #8b5cf6.' : '') });
+    const v = await pedir({ titulo: 'Este cerebro', ok: 'Guardar', campos: [{ id: 'name', etiqueta: 'Nombre', valor: c.name }, { id: 'subtitle', etiqueta: 'Descripción', valor: c.subtitle || '' }, { id: 'color', etiqueta: 'Color', tipo: 'color', valor: c.color }], validar: (x) => (!x.name.trim() ? 'El nombre no puede estar vacío.' : !x.color ? 'El color debe ser como #94a3b8.' : '') });
     if (!v) return;
     try { const { PATCH } = await import('../api.js'); await PATCH(`/api/brains/${encodeURIComponent(slug)}`, { name: v.name.trim(), subtitle: v.subtitle.trim(), color: v.color.trim() }); await cargarCerebros(); bus.dispatchEvent(new Event('cerebros')); aviso('Guardado.', 'good'); pintarTodo(); } catch (e) { fallo(e); }
   }

@@ -1,5 +1,6 @@
 // Abrinay Mind — el estado compartido de la interfaz: qué cerebro está abierto, su resumen, su grafo y las notas ancladas.
 import { GET, cerebro as B } from './api.js';
+import { derivarAcento } from './color.js';
 
 export const S = {
   cerebros: [], slug: null, meta: null, grafo: null, modelos: null,
@@ -58,10 +59,10 @@ export function anclar(nombre, si = true) {
 
 /** Aplica el color del cerebro a toda la interfaz. */
 export function pintar(color) {
-  const c = color || '#8b5cf6';
-  document.documentElement.style.setProperty('--accent', c);
-  document.documentElement.style.setProperty('--c', c);
-  document.querySelector('meta[name=theme-color]')?.setAttribute('content', '#07070b');
+  const a = derivarAcento(color), st = document.documentElement.style;
+  st.setProperty('--accent', a.acento); st.setProperty('--c', a.acento);
+  st.setProperty('--on-accent', a.sobre); st.setProperty('--accent-text', a.texto); st.setProperty('--accent-ui', a.ui);
+  document.querySelector('meta[name=theme-color]')?.setAttribute('content', '#0a0b0d');
 }
 
 /* ---------- navegación por hash:  #/<cerebro>/<vista>/<parámetro> ---------- */

@@ -1,8 +1,9 @@
 // Abrinay Mind — arranque: login, armazón (selector de cerebros + pestañas) y enrutador de vistas.
 import { GET, POST, alSalir } from './api.js';
 import { S, bus, cargarCerebros, abrir, modelos, pintar, ruta, ir, VISTAS, actual } from './store.js';
-import { h, poner, icono, dialogo, aviso, fallo, num, usd, esMovil } from './ui.js';
+import { h, poner, icono, dialogo, aviso, fallo, num, usd, esMovil, selectorColor } from './ui.js';
 import * as importador from './importar.js';
+import { MUESTRAS, normalizar } from './color.js';
 
 const raiz = document.getElementById('root');
 const PESTAÑAS = [['cerebro', 'Cerebro', 'graph'], ['notas', 'Notas', 'notes'], ['estudio', 'Estudio', 'studio'], ['canciones', 'Canciones', 'songs'], ['conexiones', 'Conexiones', 'link']];
@@ -33,7 +34,7 @@ function red(canvas) {
     for (const p of puntos) { if (!quieto) { p.x += p.vx; p.y += p.vy; if (p.x < 0 || p.x > w) p.vx *= -1; if (p.y < 0 || p.y > hh) p.vy *= -1; } }
     for (let i = 0; i < puntos.length; i++) for (let j = i + 1; j < puntos.length; j++) {
       const a = puntos[i], b = puntos[j], d = Math.hypot(a.x - b.x, a.y - b.y);
-      if (d < 150) { ctx.strokeStyle = `rgba(139,92,246,${(1 - d / 150) * .35})`; ctx.lineWidth = .8; ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke(); }
+      if (d < 150) { ctx.strokeStyle = `rgba(148,163,184,${(1 - d / 150) * .35})`; ctx.lineWidth = .8; ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke(); }
     }
     for (const p of puntos) { ctx.fillStyle = 'rgba(220,210,255,.7)'; ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, 6.3); ctx.fill(); }
     if (!quieto) raf = requestAnimationFrame(pintarRed);
@@ -144,18 +145,17 @@ function masMovil() {
     h('button.list-row', { style: { textAlign: 'left' }, onclick: () => { d.cerrar(); salir(); } }, icono('logout'), h('div.grow', h('b', 'Cerrar sesión')))) });
 }
 
-const SWATCH = ['#8b5cf6', '#ec4899', '#22d3ee', '#f59e0b', '#34d399', '#f43f5e', '#60a5fa', '#a3e635'];
+const SWATCH = MUESTRAS;
 function nuevoCerebro() {
   let color = SWATCH[S.cerebros.length % SWATCH.length];
   const nombre = h('input', { type: 'text', placeholder: 'Nombre del artista', maxlength: 60, autofocus: true }), sub = h('input', { type: 'text', placeholder: 'Compositor · productor…', maxlength: 120 });
   const plantilla = h('input', { type: 'checkbox', checked: true });
-  const muestras = h('div.row', { style: { flexWrap: 'wrap', gap: '8px' } });
-  const pintarMuestras = () => poner(muestras, SWATCH.map((c) => h('button', { type: 'button', 'aria-label': `Color ${c}`, 'aria-pressed': c === color ? 'true' : 'false', style: { width: '30px', height: '30px', borderRadius: '50%', background: c, boxShadow: c === color ? `0 0 0 2px var(--surface), 0 0 0 4px ${c}` : 'none' }, onclick: () => { color = c; pintarMuestras(); } })));
-  pintarMuestras();
+  const muestras = selectorColor(color, (c) => { color = c; }).el;
   dialogo({ titulo: 'Nuevo cerebro', sub: 'Un cerebro por artista. Después llénalo con sus letras, reglas y referentes.', cuerpo: h('div.stack', h('div.field', h('label', 'Nombre'), nombre), h('div.field', h('label', 'Descripción (opcional)'), sub), h('div.field', h('label', 'Color'), muestras),
     h('label.row', { style: { gap: '10px', cursor: 'pointer' } }, plantilla, h('span', 'Crear con el esqueleto (perfil, reglas de oro, protocolo, bitácora)'))),
   acciones: [{ texto: 'Cancelar', tipo: 'ghost' }, { texto: 'Crear cerebro', tipo: 'primary', onclick: async () => {
     if (!nombre.value.trim()) { aviso('Ponle un nombre al cerebro.', 'bad'); return false; }
+    if (!normalizar(color)) { aviso('El color debe ser como #94a3b8.', 'bad'); return false; }
     const r = await POST('/api/brains', { name: nombre.value, subtitle: sub.value, color, plantilla: plantilla.checked });
     await cargarCerebros(); pintarRail(); aviso(`Cerebro de ${r.cerebro.name} creado.`, 'good'); ir(r.cerebro.slug, 'notas');
   } }] });

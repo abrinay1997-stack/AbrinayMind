@@ -15,7 +15,7 @@ const MARCAS = { modo: '#ffffff', anclada: '#e9d5ff', busqueda: null, vecina: '#
 export class Graph3D {
   constructor(canvas, o = {}) {
     this.c = canvas; this.ctx = canvas.getContext('2d');
-    this.mini = !!o.mini; this.o = o; this.accent = o.accent || '#8b5cf6'; this.clave = o.clave || null;
+    this.mini = !!o.mini; this.o = o; this.accent = o.accent || '#94a3b8'; this.clave = o.clave || null;
     this.cam = { yaw: .55, pitch: -.32, dist: 1000, tx: 0, ty: 0, tz: 0 };
     this.capas = { links: true, mentions: false, meaning: false, learned: true };
     this.ocultos = new Set(); this.etiquetas = !this.mini; this.girar = this.mini; this.sel = -1; this.hover = -1;
