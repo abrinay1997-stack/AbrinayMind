@@ -184,7 +184,7 @@ export async function montar(el, { param }) {
   /* ---------- conversaciones ---------- */
   function pintarChats() {
     vaciar(chatSel);
-    chatSel.append(h('option', { value: '_nueva' }, '＋ Nueva conversación'));
+    chatSel.append(h('option', { value: '_nueva' }, '+ Nueva conversación'));
     for (const c of chats) chatSel.append(h('option', { value: c.id, selected: c.id === chatId }, c.title));
     chatSel.value = chatId || '_nueva';
   }

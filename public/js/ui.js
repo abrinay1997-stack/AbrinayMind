@@ -88,7 +88,7 @@ export function aviso(texto, tipo = '', ms = 4200) {
   if (!contenedorAvisos) { contenedorAvisos = h('div.toasts', { role: 'status', 'aria-live': 'polite' }); document.body.append(contenedorAvisos); }
   const t = h('div.toast' + (tipo ? '.' + tipo : ''), { role: tipo === 'bad' ? 'alert' : null }, texto);
   contenedorAvisos.append(t);
-  setTimeout(() => { t.style.transition = 'opacity .25s'; t.style.opacity = '0'; setTimeout(() => t.remove(), 260); }, ms);
+  setTimeout(() => { t.style.transition = 'opacity .2s'; t.style.opacity = '0'; setTimeout(() => t.remove(), 260); }, ms);
   return t;
 }
 export const fallo = (e) => aviso(e?.message || String(e), 'bad', 6500);

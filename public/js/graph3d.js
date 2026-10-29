@@ -161,7 +161,7 @@ export class Graph3D {
   _loop(t) {
     this.raf = 0; if (!this.vivo || !this.N || this.pausado || document.hidden) return;
     let sigue = false;
-    if (this.alfa > .02) { const pasos = this.N > 700 ? 1 : 2; for (let k = 0; k < pasos; k++) { this._paso(this.alfa); this.alfa *= .992; } sigue = true; if (this.alfa <= .02) this.guardarLayout(); }
+    if (this.alfa > .02) { const pasos = this.N > 700 || this.tactil ? 1 : 2; /* móviles: un paso de simulación por cuadro */ for (let k = 0; k < pasos; k++) { this._paso(this.alfa); this.alfa *= .992; } sigue = true; if (this.alfa <= .02) this.guardarLayout(); }
     if (this.girar && !this.arrastre) { this.cam.yaw += this.mini ? .0016 : .0007; sigue = true; }
     if (this.anim) {
       const u = clamp((t - this.anim.t0) / this.anim.dur, 0, 1), e = ease(u);
