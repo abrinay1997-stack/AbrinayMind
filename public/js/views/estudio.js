@@ -21,7 +21,11 @@ export async function montar(el, { param }) {
   const A = api(), slug = S.slug, brain = S.cerebros.find((c) => c.slug === slug);
   let meta = S.meta, chats = [], chatId = null, mensajes = [], ctrl = null, mapa = null, mapaVivo = true;
   const guardado = (() => { try { return JSON.parse(localStorage.getItem(`am:brief:${slug}`) || '{}'); } catch { return {}; } })();
-  const f = { titulo: '', modo: '', genero: '', bpm: '', tema: '', mood: '', referencia: '', estructura: '', concepto: '', semillas: '', restricciones: '', versiones: '1', profundidad: '', modelo: '', ...guardado };
+  const f = { titulo: '', modos: [], genero: '', bpm: '', tema: '', mood: '', referencia: '', estructura: '', concepto: '', semillas: '', restricciones: '', versiones: '1', profundidad: '', modelo: '', ...guardado };
+  if (!Array.isArray(f.modos)) f.modos = [];
+  if (typeof f.modo === 'string' && f.modo && !f.modos.length) f.modos = [f.modo];   // lo guardado antes de poder mezclar
+  delete f.modo;
+  const modoDelForm = () => (f.modos.length > 1 ? [...f.modos] : f.modos[0] || null);
   const guardarForm = debounce(() => { try { localStorage.setItem(`am:brief:${slug}`, JSON.stringify(f)); } catch { /* sin almacenamiento */ } }, 300);
   let verMapa = true; try { verMapa = localStorage.getItem('am:mapa') !== '0' && innerWidth > 1180; } catch { verMapa = innerWidth > 1180; }
 
@@ -36,8 +40,12 @@ export async function montar(el, { param }) {
   };
   const modosEl = h('div.modes', { role: 'group', 'aria-label': 'Modo de escritura' });
   const pintarModos = () => {
-    poner(modosEl, h('button.mode', { 'aria-pressed': f.modo === '' ? 'true' : 'false', onclick: () => { f.modo = ''; guardarForm(); pintarModos(); } }, h('b', 'Que el cerebro decida'), h('small', 'Lo detecta por tus palabras; si duda, te pregunta.')),
-      modosDisponibles.map((m) => h('button.mode', { 'aria-pressed': f.modo === m.nota ? 'true' : 'false', onclick: () => { f.modo = m.nota; guardarForm(); pintarModos(); } }, h('b', m.nombre), m.palabras?.length ? h('small', m.palabras.slice(0, 4).join(' · ')) : null)));
+    const elegir = (lista) => { f.modos = lista; guardarForm(); pintarModos(); };
+    const alternar = (nota) => elegir(f.modos.includes(nota) ? f.modos.filter((x) => x !== nota) : [...f.modos.filter((x) => x !== 'libre'), nota].slice(-3));
+    poner(modosEl, h('button.mode', { 'aria-pressed': f.modos.length === 0 ? 'true' : 'false', onclick: () => elegir([]) }, h('b', 'Que el cerebro decida'), h('small', 'Lo detecta por tus palabras; si dos pesan parecido, los mezcla; si duda, te pregunta.')),
+      h('button.mode', { 'aria-pressed': f.modos[0] === 'libre' ? 'true' : 'false', onclick: () => elegir(['libre']) }, h('b', 'Libre'), h('small', 'Sin modo fijo: combina lo que convenga a la canción.')),
+      modosDisponibles.map((m) => h('button.mode', { 'aria-pressed': f.modos.includes(m.nota) ? 'true' : 'false', onclick: () => alternar(m.nota) }, h('b', m.nombre), m.palabras?.length ? h('small', m.palabras.slice(0, 4).join(' · ')) : null)),
+      modosDisponibles.length > 1 ? h('small.faint', { style: { padding: '2px 4px' } }, f.modos.length > 1 ? `Mezcla de ${f.modos.length} modos.` : 'Toca varios (hasta 3) para mezclarlos en una misma letra.') : null);
   };
   pintarModos();
 
@@ -250,7 +258,7 @@ export async function montar(el, { param }) {
   /* ---------- enviar ---------- */
   function briefDeForm() {
     const b = {}; for (const k of ['titulo', 'genero', 'bpm', 'tema', 'mood', 'referencia', 'estructura', 'concepto', 'semillas', 'restricciones']) if (String(f[k]).trim()) b[k] = String(f[k]).trim();
-    b.versiones = Number(f.versiones) || 1; if (f.modo) b.modo = f.modo; return b;
+    b.versiones = Number(f.versiones) || 1; const mm = modoDelForm(); if (mm) b.modo = mm; return b;
   }
   async function escribirLetra(fn) {
     const brief = briefDeForm();
@@ -278,7 +286,7 @@ export async function montar(el, { param }) {
     ctrl = new AbortController(); enviarBtn.replaceChildren(icono('x')); enviarBtn.title = 'Detener'; enviarBtn.setAttribute('aria-label', 'Detener');
     let acumulado = '', info = null, hecho = null, fallido = null, pendiente = 0, interrumpido = false;
     const pintarCuerpo = () => { pendiente = 0; const pegado = cercaDelFinal(); poner(cuerpo, acumulado ? bloquesDeLetra(acumulado, null, { enVivo: true }) : null); if (pegado) abajo(); };
-    const cuerpoPeticion = { fn, anclas: [...S.anclas], modo: modo || f.modo || null, ...(f.modelo ? { model: f.modelo } : {}), ...(f.profundidad ? { profundidad: f.profundidad } : {}), ...(brief ? { brief } : { texto }) };
+    const cuerpoPeticion = { fn, anclas: [...S.anclas], modo: modo || modoDelForm(), ...(f.modelo ? { model: f.modelo } : {}), ...(f.profundidad ? { profundidad: f.profundidad } : {}), ...(brief ? { brief } : { texto }) };
     try {
       await flujo(`${A.base}chats/${encodeURIComponent(id)}/message`, cuerpoPeticion, {
         contexto(i) {

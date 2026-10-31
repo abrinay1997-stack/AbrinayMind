@@ -5,7 +5,7 @@ import { HttpError, bad, noEsta, ahora, idCorto, recortar } from './http.js';
 import { todas, una, correr, auditar } from './db.js';
 import { leerAjustes, elegirModelo, llamarEnFlujo, llamar, PROVEEDORES, costo, presupuestoPensar } from './models.js';
 import * as uso from './usage.js';
-import { armarContexto, resolverModo, modosDelCerebro, sistemaFijo, sistemaVariable, encargoTexto, consultaDeEncargo } from './context.js';
+import { armarContexto, resolverModo, nombresDeModos, modosDelCerebro, sistemaFijo, sistemaVariable, encargoTexto, consultaDeEncargo } from './context.js';
 
 const enc = new TextEncoder();
 const sse = (evento, datos) => enc.encode(`event: ${evento}\ndata: ${JSON.stringify(datos)}\n\n`);
@@ -114,20 +114,20 @@ export async function mensaje(env, ctx, db, brain, chatId, datos, { fetchFn = fe
 
   // el historial reciente (de él sale también el modo que ya traía la conversación)
   const previos = (await todas(db, 'select role, content, meta from chat_messages where chat_id = ? order by id desc limit ?', chat.id, HISTORIAL)).reverse();
-  const previo = [...previos].reverse().map((m) => { try { return m.role === 'assistant' ? JSON.parse(m.meta || '{}').modo?.nota : null; } catch { return null; } }).find(Boolean) || null;
+  const previo = [...previos].reverse().map((m) => { try { if (m.role !== 'assistant') return null; const md = JSON.parse(m.meta || '{}').modo; return md?.notas?.length ? md.notas : md?.nota; } catch { return null; } }).find(Boolean) || null;
 
   // el modo: se elige, se detecta, continúa el de la conversación o se pregunta
   const modos = await modosDelCerebro(db, brain.id);
   const base = brief ? [brief.titulo, brief.tema, brief.mood, brief.concepto, brief.referencia, brief.restricciones].filter(Boolean).join(' ') : texto;
   const res = resolverModo(modos, datos.modo ?? brief?.modo ?? null, base, brief ? null : previo);   // un encargo nuevo no hereda el modo del anterior; la charla sí
   const mensajeUsuario = brief ? encargoTexto(brief, res) : texto;
-  const consulta = brief ? consultaDeEncargo(brief, res.modo) : texto;
+  const consulta = brief ? consultaDeEncargo(brief, res.modos) : texto;
   const profundidad = ['ligera', 'normal', 'profunda'].includes(datos.profundidad) ? datos.profundidad : ajustes.profundidad;
   const anclas = (Array.isArray(datos.anclas) ? datos.anclas : []).map(String).slice(0, 8);
 
-  const contexto = await armarContexto(env, db, brain, { consulta, modo: res.modo?.nota ?? null, anclas, profundidad, entrena: !!modelo.entrena });
-  const modoTexto = res.modo ? (res.origen === 'detectado' ? `detectado: ${res.motivo}` : res.origen === 'continua' ? 'sigue el de la conversación' : 'elegido por el artista') : '';
-  const sistema = [{ text: sistemaFijo(brain, contexto.plan.fijas), cache: true }, { text: sistemaVariable({ modos, modo: res.modo, modoTexto, recuperadas: contexto.plan.recuperadas }) }];
+  const contexto = await armarContexto(env, db, brain, { consulta, modo: res.modos.map((m) => m.nota), anclas, profundidad, entrena: !!modelo.entrena });
+  const modoTexto = res.modos.length ? (res.origen === 'detectado' ? `detectado: ${res.motivo}` : res.origen === 'continua' ? 'sigue el de la conversación' : 'elegido por el artista') : '';
+  const sistema = [{ text: sistemaFijo(brain, contexto.plan.fijas), cache: true }, { text: sistemaVariable({ modos, modosSel: res.modos, libre: res.origen === 'libre', modoTexto, recuperadas: contexto.plan.recuperadas }) }];
 
   const mensajes = [...previos.map((m) => ({ role: m.role, content: m.content })), { role: 'user', content: mensajeUsuario }];
   while (mensajes.length && mensajes[0].role !== 'user') mensajes.shift();
@@ -138,7 +138,7 @@ export async function mensaje(env, ctx, db, brain, chatId, datos, { fetchFn = fe
 
   const info = {
     modelo: { id: modelo.id, nombre: modelo.nombre, entrena: !!modelo.entrena, de }, avisos,
-    modo: res.modo ? { nombre: res.modo.nombre, nota: res.modo.nota, origen: res.origen } : { nombre: null, origen: res.origen, pregunta: res.pregunta, sugerido: res.sugerido?.nota },
+    modo: res.modos.length ? { nombre: nombresDeModos(res), nota: res.modo.nota, notas: res.modos.map((m) => m.nota), origen: res.origen } : { nombre: res.origen === 'libre' ? 'Libre' : null, origen: res.origen, pregunta: res.pregunta, sugerido: res.sugerido?.nota },
     fijas: contexto.fijas, leidas: contexto.leidas, omitidas: contexto.omitidas, significado: contexto.significado, profundidad,
   };
 

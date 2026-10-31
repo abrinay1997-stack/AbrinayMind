@@ -2,7 +2,7 @@
 // y decide qué entra, con qué detalle y en qué orden, sin pasarse del presupuesto.
 //
 //   1 · siempre ... notas con `siempre: true` (reglas de oro, firma, bitácora). Van enteras, en la parte fija del prompt.
-//   2 · modo ...... la nota del modo elegido.
+//   2 · modo ...... la nota del modo elegido (o las de varios, si se mezclan).
 //   3 · ancladas .. las que el artista fijó a mano.
 //   4 · búsqueda .. lo que las palabras (BM25) y el significado (vectores) encontraron para este encargo.
 //   5 · vecinas ... lo que despiertan las anteriores a través de las sinapsis (activación en 2 saltos).
@@ -26,6 +26,7 @@ export function planear({ notas, grafo, semillas = new Map(), anclas = [], modo 
   const omitidas = { privadas: [], sinSitio: [], recortadas: [] };
   const bloque = (n, motivo, texto, energia = 0) => ({ nombre: n.nombre, carpeta: n.carpeta, motivo, texto, energia: +energia.toFixed(3) });
 
+  const modosSel = Array.isArray(modo) ? modo : modo ? [modo] : [];
   // 1 · fijas
   const fijas = [];
   for (const n of notas.values()) {
@@ -41,12 +42,12 @@ export function planear({ notas, grafo, semillas = new Map(), anclas = [], modo 
   const yaEstan = new Set(fijas.map((b) => b.nombre));
   const energia = new Map();
   const sumar = (nombre, e) => { if (notas.has(nombre)) energia.set(nombre, Math.max(energia.get(nombre) || 0, e)); };
-  if (modo) sumar(modo, 1);
+  for (const m of modosSel) sumar(m, 1);
   for (const a of anclas) sumar(a, 1);
   for (const [nombre, e] of semillas) sumar(nombre, Math.min(1, e));
   const despertadas = activar(grafo, energia, { adj: adj || adyacencia(grafo) });
   const motivos = new Map();
-  if (modo) motivos.set(modo, 'modo');
+  for (const m of modosSel) motivos.set(m, 'modo');
   for (const a of anclas) if (!motivos.has(a)) motivos.set(a, 'anclada');
   for (const nombre of semillas.keys()) if (!motivos.has(nombre)) motivos.set(nombre, 'busqueda');
 

@@ -38,5 +38,11 @@ export function detectarModo(texto, modos) {
   return { modo: primero.m, confianza, motivo: `Palabras: ${primero.aciertos.slice(0, 4).join(', ')}` };
 }
 
+/** Todos los modos que el texto señala, del que más al que menos: [{ modo, n, aciertos }]. Sirve para mezclar cuando dos modos pesan parecido. */
+export function modosSenalados(texto, modos) {
+  const f = ` ${fold(texto).replace(/[^a-z0-9ñ]+/g, ' ')} `;
+  return modos.map((m) => { const aciertos = m.palabras.filter((p) => p && esta(f, p)); return { modo: m, n: aciertos.length, aciertos }; }).filter((x) => x.n).sort((a, b) => b.n - a.n);
+}
+
 /** ¿Hay que preguntar? Sí si no hay modo claro (menos de 0.5 de confianza) y el artista no lo eligió. */
 export const hayQuePreguntar = (elegido, deteccion) => !elegido && !(deteccion?.modo && deteccion.confianza >= 0.5);
