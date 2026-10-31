@@ -264,7 +264,7 @@ export async function montar(el, { param }) {
     const ok = await enviar({ texto, fn: 'chat' }); if (!ok) { entrada.value = texto; ajustarAlto(); }
   }
 
-  async function enviar({ brief, texto, fn }) {
+  async function enviar({ brief, texto, fn, modo = null }) {
     if (ctrl) return false;
     let id;
     try { id = await asegurarChat(brief?.titulo || brief?.tema || texto); } catch (e) { fallo(e); return false; }
@@ -278,7 +278,7 @@ export async function montar(el, { param }) {
     ctrl = new AbortController(); enviarBtn.replaceChildren(icono('x')); enviarBtn.title = 'Detener'; enviarBtn.setAttribute('aria-label', 'Detener');
     let acumulado = '', info = null, hecho = null, fallido = null, pendiente = 0, interrumpido = false;
     const pintarCuerpo = () => { pendiente = 0; const pegado = cercaDelFinal(); poner(cuerpo, acumulado ? bloquesDeLetra(acumulado, null, { enVivo: true }) : null); if (pegado) abajo(); };
-    const cuerpoPeticion = { fn, anclas: [...S.anclas], modo: f.modo || null, ...(f.modelo ? { model: f.modelo } : {}), ...(f.profundidad ? { profundidad: f.profundidad } : {}), ...(brief ? { brief } : { texto }) };
+    const cuerpoPeticion = { fn, anclas: [...S.anclas], modo: modo || f.modo || null, ...(f.modelo ? { model: f.modelo } : {}), ...(f.profundidad ? { profundidad: f.profundidad } : {}), ...(brief ? { brief } : { texto }) };
     try {
       await flujo(`${A.base}chats/${encodeURIComponent(id)}/message`, cuerpoPeticion, {
         contexto(i) {
@@ -308,6 +308,12 @@ export async function montar(el, { param }) {
     ctrl = null; reponerBoton();
     bus.dispatchEvent(new Event('gasto'));
     try { await abrirChat(id); await cargarChats(); } catch { /* ya está en pantalla lo esencial */ }
+    // el cerebro dudó del modo: en vez de adivinar, ofrece los modos para elegir con un toque (y reenvía el mismo encargo con ese modo)
+    if (info?.modo?.pregunta && modosDisponibles.length) {
+      const orden = [...modosDisponibles].sort((a, b) => (b.nota === info.modo.sugerido) - (a.nota === info.modo.sugerido));
+      (msgsInner.querySelector('.msg.bot:last-child .msg-foot') || pie).append(h('div.row.wrap', { style: { gap: '6px', marginTop: '8px' }, role: 'group', 'aria-label': 'Elegir el modo y volver a intentarlo' },
+        h('span.faint', 'Elige el modo:'), orden.map((m) => h('button.btn.small' + (m.nota === info.modo.sugerido ? '.primary' : ''), { onclick: () => enviar({ brief, texto, fn, modo: m.nota }) }, m.nombre))));
+    }
     return true;
   }
   const reponerBoton = () => { enviarBtn.replaceChildren(icono('send')); enviarBtn.title = 'Enviar (Enter)'; enviarBtn.setAttribute('aria-label', 'Enviar'); };

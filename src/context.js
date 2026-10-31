@@ -45,7 +45,7 @@ export async function armarContexto(env, db, brain, { consulta, modo = null, anc
 }
 
 /** Qué modo corresponde a un encargo: el elegido, o el detectado, o ninguno (y entonces el cerebro pregunta). */
-export function resolverModo(modos, elegido, texto) {
+export function resolverModo(modos, elegido, texto, previo = null) {
   if (!modos.length) return { modo: null, origen: 'sin-modos', pregunta: false };
   if (elegido && elegido !== 'preguntar') {
     const m = modos.find((x) => x.nota === elegido || x.id === elegido);
@@ -54,6 +54,9 @@ export function resolverModo(modos, elegido, texto) {
   if (elegido === 'preguntar') return { modo: null, origen: 'preguntar', pregunta: true };
   const d = detectarModo(texto, modos);
   if (d.modo && d.confianza >= 0.5) return { modo: d.modo, origen: 'detectado', confianza: d.confianza, motivo: d.motivo, pregunta: false };
+  // sin señales claras, la conversación manda: si ya se venía escribiendo en un modo, se sigue en él (hasta que el artista diga otro)
+  const seguido = previo && modos.find((x) => x.nota === previo);
+  if (seguido) return { modo: seguido, origen: 'continua', motivo: 'sigue el modo de la conversación', pregunta: false };
   return { modo: null, origen: 'incierto', confianza: d.confianza, pregunta: true, sugerido: d.modo };
 }
 

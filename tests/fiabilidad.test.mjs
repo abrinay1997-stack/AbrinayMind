@@ -118,7 +118,8 @@ test('el constructor pide más espacio de salida cuando se piden varias versione
   const a = await conChat({ proveedor: p });
   await a.msg('', { fn: 'letra', brief: { titulo: 'x', versiones: 1 } });
   await a.msg('', { fn: 'letra', brief: { titulo: 'x', versiones: 3 } });
-  assert.deepEqual(visto, [4096, tokensDe('letra', { versiones: 3 })]);
+  const pensar = 4000;   // el pensamiento (por defecto «normal») se suma al espacio de la letra
+  assert.deepEqual(visto, [4096 + pensar, tokensDe('letra', { versiones: 3 }) + pensar]);
 });
 
 test('un fallo interno del servidor devuelve un código para encontrarlo en los registros', async () => {
