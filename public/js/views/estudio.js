@@ -326,6 +326,7 @@ export async function montar(el, { param }) {
         },
         texto(t) { acumulado += t; estado('Escribiendo'); orbe.classList.remove('think'); if (!pendiente) pendiente = requestAnimationFrame(pintarCuerpo); },
         descartar() { acumulado = ''; if (!pendiente) pendiente = requestAnimationFrame(pintarCuerpo); },
+        textoFinal(t) { acumulado = t; if (!pendiente) pendiente = requestAnimationFrame(pintarCuerpo); },
         paso(d) { estado((d.texto || 'Trabajando').replace(/…$/, '')); },
         pensando() { estado('Pensando'); },
         cambios(d) { poner(cambiosEl, d.cambios?.length ? tarjetaCambios(d.cambios, null) : null); abajo(); },

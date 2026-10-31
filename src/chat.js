@@ -75,9 +75,12 @@ const VERBOS = { buscar_notas: 'Buscando en el cerebro', leer_nota: 'Leyendo', l
 export const pasoDe = (nombre, entrada) => { const x = entrada?.nombre || entrada?.origen || entrada?.consulta || ''; return `${VERBOS[nombre] || 'Trabajando'}${x ? ` «${recortar(String(x), 40)}»` : ''}…`; };
 
 
+/** ¿Parece una letra (secciones entre corchetes o varias líneas cortas)? */
+export const pareceLetra = (t) => /^\s*\[[^\]]{2,30}\]\s*$/m.test(String(t || '')) || String(t || '').split('\n').filter((l) => l.trim() && l.length < 90).length >= 8;
+
 /** Suma lo que dejó cada respuesta del modelo en un turno con herramientas (texto, uso, cómo terminó). `con(actual)` = lo acumulado + la respuesta en curso. */
 export function acumulador() {
-  const a = { texto: '', uso: {}, parada: null, fin: false, tope: false };
+  const a = { texto: '', borrador: '', uso: {}, parada: null, fin: false, tope: false };
   const juntar = (x, y) => (x && y ? x + '\n\n' + y : x || y);
   const sumarUso = (base, extra) => { const o = { ...base }; for (const [k, v] of Object.entries(extra || {})) o[k] = typeof v === 'number' ? (o[k] || 0) + v : v; return o; };
   a.sumar = (e) => { a.texto = juntar(a.texto, e.texto.trim() ? e.texto : ''); a.uso = sumarUso(a.uso, e.uso); a.parada = e.parada; a.fin = e.fin; };
@@ -239,7 +242,7 @@ export async function mensaje(env, ctx, db, brain, chatId, datos, { fetchFn = fe
           const e = lector.estado;
           if (e.error) throw new Error(e.error);
           const pedidas = ejecutor && e.parada === 'tool_use' ? e.herramientas : [];
-          if (modoHerramientas === 'lectura' && pedidas.length) { acum.sumar({ texto: '', uso: e.uso, parada: e.parada, fin: e.fin }); await w.write(sse('am_descartar', {})); }   // lo escrito antes de analizar es borrador: no se guarda
+          if (modoHerramientas === 'lectura' && pedidas.length) { acum.borrador = e.texto.trim() ? e.texto : acum.borrador; acum.sumar({ texto: '', uso: e.uso, parada: e.parada, fin: e.fin }); await w.write(sse('am_descartar', {})); }   // lo escrito antes de analizar es borrador: no se guarda
           else acum.sumar(e);
           if (e.texto.trim() && !(modoHerramientas === 'lectura' && pedidas.length)) espaciado = false;
           if (!pedidas.length) break;
@@ -261,6 +264,8 @@ export async function mensaje(env, ctx, db, brain, chatId, datos, { fetchFn = fe
         await w.write(enc.encode(`event: message_stop\ndata: {"type":"message_stop"}\n\n`));
       }
       // una respuesta sin message_stop se cortó a mitad; una con stop_reason max_tokens topó con el límite: las dos se marcan para que el navegador lo diga
+      // si tras analizar el modelo contestó algo breve que no es una letra, la letra era el borrador: no se pierde
+      if (modoHerramientas === 'lectura' && acum.borrador && !pareceLetra(acum.texto) && pareceLetra(acum.borrador)) { acum.texto = `${acum.borrador.trim()}\n\n${acum.texto}`.trim(); await w.write(sse('am_texto_final', { texto: acum.texto })); }
       const fin = acum.con(null), incompleta = !fin.fin && !acum.tope, parada = acum.tope ? 'max_rondas' : fin.parada;
       const { usd, mensajeId } = await guardar(fin, { parada, ...(incompleta ? { incompleta: true } : {}) });
       await w.write(sse('am_done', { usd, uso: fin.uso, modelo: modelo.id, mensajeId, chatId: chat.id, parada, incompleta, cambios: cambiosPublicos(cambios) }));

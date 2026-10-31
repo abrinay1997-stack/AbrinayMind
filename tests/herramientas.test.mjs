@@ -221,3 +221,11 @@ test('contexto: las medidas de los ejemplos del modo (sílabas, rima) llegan al 
   assert.ok(r.eventos.find((e) => e.evento === 'am_context').datos.modo.medidas?.[0]?.nombre === 'Ejemplo propio');
   assert.match(resultadosDe(a.proveedor.cuerpos[1])[0].content, /Sus ejemplos \(estimado\): «Ejemplo propio» mediana/);
 });
+
+test('letra: si el modelo escribe la letra y luego solo contesta algo breve tras analizarla, la letra NO se pierde', async () => {
+  const a = await conCerebro((cuerpo, n) => (n === 0 ? { texto: BORRADOR, usos: [{ name: 'analizar_letra', input: { texto: BORRADOR } }] } : { texto: 'Revisada: todo en orden.' }));
+  const r = await a.msg('', { fn: 'letra', brief: { titulo: 'Ruta', tema: 'caminar' } });
+  const m = await a.ultimo();
+  assert.match(m.content, /\[VERSO 1\][\s\S]*Solo sigo mi lugar[\s\S]*Revisada: todo en orden\./, 'quedan la letra y el comentario');
+  assert.ok(r.eventos.some((e) => e.evento === 'am_texto_final'), 'se avisa al navegador del texto definitivo');
+});
