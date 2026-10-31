@@ -83,3 +83,28 @@ test('modos: en una conversación real, el segundo mensaje sin pistas sigue el m
   const m = r2.eventos.find((e) => e.evento === 'am_context').datos.modo;
   assert.equal(m.origen, 'continua'); assert.ok(m.nota);
 });
+
+test('mezcla: se eligen varios modos, o dos con señales parecidas se mezclan en vez de preguntar; «libre» no fija ninguno', () => {
+  const e = resolverModo(modos, ['M1', 'M2'], 'x');
+  assert.deepEqual(e.modos.map((m) => m.id), ['intro', 'batalla']); assert.equal(e.origen, 'elegido'); assert.equal(e.modo.id, 'intro');
+  assert.equal(resolverModo(modos, ['M1', 'M1', 'no existe'], 'x').modos.length, 1);
+  const d = resolverModo(modos, null, 'una batalla sobre mi identidad', null);
+  assert.equal(d.origen, 'detectado'); assert.deepEqual(d.modos.map((m) => m.id).sort(), ['batalla', 'intro']); assert.match(d.motivo, /mezcla/);
+  const l = resolverModo(modos, 'libre', 'x', 'M1');
+  assert.equal(l.origen, 'libre'); assert.equal(l.modos.length, 0); assert.equal(l.pregunta, false);
+});
+
+test('mezcla: el cerebro lee las notas de todos los modos mezclados, el prompt lo dice y la conversación sigue en la mezcla', async () => {
+  const p = espiar(() => ok('Va.'));
+  const a = await conChat({ proveedor: p });
+  const r1 = await a.msg('algo', { modo: ['Modo 1 — Introspectivo', 'Modo 2 — Batalla'] });
+  const c = r1.eventos.find((e) => e.evento === 'am_context').datos;
+  assert.equal(c.modo.notas.length, 2); assert.match(c.modo.nombre, / \+ /);
+  assert.deepEqual(c.leidas.filter((l) => l.motivo === 'modo').map((l) => l.nombre).sort(), ['Modo 1 — Introspectivo', 'Modo 2 — Batalla']);
+  assert.match(p.cuerpos[0].system[1].text, /MEZCLA de «Introspectivo-Psicológico» \+ «Técnico-Batalla»/);
+  const r2 = await a.msg('sigue con el segundo verso');
+  const m2 = r2.eventos.find((e) => e.evento === 'am_context').datos.modo;
+  assert.equal(m2.origen, 'continua'); assert.equal(m2.notas.length, 2);
+  const r3 = await a.msg('otra cosa', { modo: 'libre' });
+  assert.match(p.cuerpos[2].system[1].text, /LIBRE/); assert.equal(r3.eventos.find((e) => e.evento === 'am_context').datos.modo.nombre, 'Libre');
+});
