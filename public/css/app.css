@@ -377,3 +377,7 @@ textarea.suno-letra { font-family: var(--mono); font-size: 13.5px; line-height: 
 .cambio .antes { color: var(--bad); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--bad) 60%, transparent); } .cambio .despues { color: var(--good); } .cambio em { font-family: var(--sans); font-size: var(--t-sm); opacity: .85; text-decoration: none; }
 .regla { padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--r-m); background: var(--surface); display: grid; gap: 10px; }
 textarea.corregir { font-family: var(--serif); font-size: 17px; line-height: 1.7; min-height: 320px; }
+
+/* ---------- importar eligiendo carpetas ---------- */
+.carpetas { display: grid; gap: 6px; max-height: 40dvh; overflow: auto; padding: 2px; }
+.carpeta { display: flex; gap: 12px; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--r-m); background: var(--surface); cursor: pointer; min-height: var(--hit); } .carpeta input { margin-top: 4px; width: 18px; height: 18px; flex: none; } .carpeta:has(input:not(:checked)) { opacity: .55; text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--bad) 50%, transparent); } .carpeta:has(input:not(:checked)) small { text-decoration: none; }
