@@ -364,3 +364,6 @@ kbd { font-family: var(--mono); font-size: .88em; background: var(--surface-3); 
 }
 @media (max-width: 900px), (pointer: coarse) { input[type=text], input[type=password], input[type=number], input[type=search], select { min-height: var(--hit); } .seg button { min-height: var(--hit); } }
 @media (max-height: 500px) { .seg button, .brand { min-height: 38px; } }
+
+/* ---------- aviso de respuesta cortada ---------- */
+.corte { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 10px 12px; border: 1px solid color-mix(in srgb, var(--warn) 40%, transparent); background: color-mix(in srgb, var(--warn) 8%, var(--surface)); border-radius: var(--r-m); color: var(--text-2); font-size: var(--t-sm); }

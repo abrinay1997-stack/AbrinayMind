@@ -8,7 +8,7 @@ export const alSalir = new EventTarget(); // se dispara con 401: la sesión cadu
 async function leerError(res) {
   const d = await res.json().catch(() => ({}));
   if (res.status === 401) alSalir.dispatchEvent(new Event('sesion'));
-  return new ErrorApi(d.error || `Error ${res.status}`, res.status, d);
+  return new ErrorApi((d.error || `Error ${res.status}`) + (d.id ? ` (código ${d.id.slice(0, 6)})` : ''), res.status, d);
 }
 
 export async function api(metodo, ruta, cuerpo, { senal } = {}) {

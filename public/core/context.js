@@ -11,7 +11,7 @@ import { resumen, leerCabecera } from './text.js';
 import { multiplicador } from './hebb.js';
 
 export const PROFUNDIDAD = { ligera: 14_000, normal: 30_000, profunda: 60_000 };
-const MAX_FIJA = 6_000, MAX_COMPLETA = 3_200, MAX_RESUMEN = 360;
+const MAX_FIJA = 8_000, MAX_COMPLETA = 3_200, MAX_RESUMEN = 360;
 const ORDEN_MOTIVO = { modo: 0, anclada: 1, busqueda: 2, vecina: 3 };
 
 /**
@@ -23,7 +23,7 @@ const ORDEN_MOTIVO = { modo: 0, anclada: 1, busqueda: 2, vecina: 3 };
  */
 export function planear({ notas, grafo, semillas = new Map(), anclas = [], modo = null, pasajes = new Map(), pesos = new Map(), presupuesto = PROFUNDIDAD.normal, entrena = false, adj = null }) {
   const permitido = (n) => !(entrena && n.privado);
-  const omitidas = { privadas: [], sinSitio: [] };
+  const omitidas = { privadas: [], sinSitio: [], recortadas: [] };
   const bloque = (n, motivo, texto, energia = 0) => ({ nombre: n.nombre, carpeta: n.carpeta, motivo, texto, energia: +energia.toFixed(3) });
 
   // 1 · fijas
@@ -31,7 +31,9 @@ export function planear({ notas, grafo, semillas = new Map(), anclas = [], modo 
   for (const n of notas.values()) {
     if (!n.siempre) continue;
     if (!permitido(n)) { omitidas.privadas.push(n.nombre); continue; }
-    fijas.push(bloque(n, 'siempre', recortar(leerCabecera(n.texto).cuerpo.trim(), MAX_FIJA)));
+    const cuerpo = leerCabecera(n.texto).cuerpo.trim();
+    if (cuerpo.length > MAX_FIJA) omitidas.recortadas.push({ nombre: n.nombre, caracteres: cuerpo.length, max: MAX_FIJA });
+    fijas.push(bloque(n, 'siempre', recortarFija(cuerpo, MAX_FIJA)));
   }
   fijas.sort((a, b) => a.nombre.localeCompare(b.nombre));
 
@@ -72,6 +74,19 @@ export function planear({ notas, grafo, semillas = new Map(), anclas = [], modo 
   }
   recuperadas.sort((a, b) => ORDEN_MOTIVO[a.motivo] - ORDEN_MOTIVO[b.motivo] || b.energia - a.energia);
   return { fijas, recuperadas, omitidas, chars: usado, charsFijas: fijas.reduce((s, b) => s + b.texto.length, 0) };
+}
+
+/**
+ * Una nota «siempre» demasiado larga se recorta por el MEDIO: se conserva el principio (lo más importante: título, reglas de oro) y el final
+ * (lo más nuevo: una nota como «Reglas aprendidas» crece añadiendo líneas al final, y recortar por el final ignoraba justo lo último que se enseñó).
+ */
+export function recortarFija(t, n) {
+  if (t.length <= n) return t;
+  const marca = '\n[…recortado en el medio: se conservan el principio y lo más reciente…]\n';
+  const cabeza = Math.floor((n - marca.length) * 0.5), cola = n - marca.length - cabeza;
+  const a = t.slice(0, cabeza).replace(/[ \t]+\S*$/, '').replace(/\n[^\n]*$/, (m) => (m.length < 300 ? '' : m));
+  let b = t.slice(t.length - cola); const nl = b.indexOf('\n'); if (nl >= 0 && nl < 400) b = b.slice(nl + 1);
+  return a.trimEnd() + marca + b.trimStart();
 }
 
 function recortar(t, n) { return t.length > n ? t.slice(0, n).replace(/\s+\S*$/, '') + '\n[…recortado]' : t; }

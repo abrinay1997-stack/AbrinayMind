@@ -1,5 +1,5 @@
 // Abrinay Mind — el enrutador. Solo /api/* llega aquí (la interfaz la sirven los Static Assets de Cloudflare sin gastar CPU del Worker).
-import { HttpError, bad, json, cuerpo } from './http.js';
+import { HttpError, bad, json, cuerpo, idCorto } from './http.js';
 import { configurado, sesionValida, entrar, salir, exigirOrigen } from './auth.js';
 import { una, todas } from './db.js';
 import * as cerebros from './brains.js';
@@ -99,11 +99,11 @@ r('POST', '/api/b/:slug/chats', B(async (c, b) => ({ conversacion: await chat.cr
 r('GET', '/api/b/:slug/chats/:id', B(async (c, b) => chat.leer(c.db, b, c.p.id)));
 r('PATCH', '/api/b/:slug/chats/:id', B(async (c, b) => chat.renombrar(c.db, b, c.p.id, (await c.cuerpo()).title)));
 r('DELETE', '/api/b/:slug/chats/:id', B(async (c, b) => chat.borrar(c.db, b, c.p.id)));
-r('POST', '/api/b/:slug/chats/:id/message', B(async (c, b) => chat.mensaje(c.env, c.ec, c.db, b, c.p.id, await c.cuerpo(), { fetchFn: c.fetchFn })));
+r('POST', '/api/b/:slug/chats/:id/message', B(async (c, b) => chat.mensaje(c.env, c.ec, c.db, b, c.p.id, await c.cuerpo(), { fetchFn: c.fetchFn, esperas: c.esperas, tiempos: c.tiempos })));
 
 /** Atiende una petición. `opciones.fetchFn` permite probar sin red; `ec` es el contexto de ejecución (waitUntil). */
-export async function handle(request, env, ec, { fetchFn } = {}) {
-  const url = new URL(request.url);
+export async function handle(request, env, ec, { fetchFn, esperas, tiempos } = {}) {
+  const url = new URL(request.url), idPeticion = idCorto();
   try {
     if (!url.pathname.startsWith('/api/')) return env.ASSETS ? env.ASSETS.fetch(request) : json({ error: 'No existe.' }, 404);
     exigirOrigen(request);
@@ -115,14 +115,14 @@ export async function handle(request, env, ec, { fetchFn } = {}) {
     for (const ruta of RUTAS) {
       if (ruta.metodo !== request.method) continue;
       const m = ruta.re.exec(url.pathname); if (!m) continue;
-      const c = { request, env, ec: ec ?? { waitUntil: () => {} }, db, url, p: Object.fromEntries(Object.entries(m.groups || {}).map(([k, v]) => [k, decodeURIComponent(v)])), cuerpo: () => cuerpo(request, ruta.max), fetchFn: fetchFn ?? fetch };
+      const c = { request, env, ec: ec ?? { waitUntil: () => {} }, db, url, p: Object.fromEntries(Object.entries(m.groups || {}).map(([k, v]) => [k, decodeURIComponent(v)])), cuerpo: () => cuerpo(request, ruta.max), fetchFn: fetchFn ?? fetch, esperas, tiempos, idPeticion };
       const out = await ruta.fn(c);
       return out instanceof Response ? out : json(out ?? { ok: true });
     }
     throw new HttpError(404, 'Esa ruta no existe.');
   } catch (e) {
     if (e instanceof HttpError) return json({ error: e.message, ...e.extra }, e.status);
-    console.error('[abrinay-mind]', e?.stack || e);
-    return json({ error: 'Algo falló en el servidor. Inténtalo de nuevo.' }, 500);
+    console.error(`[abrinay-mind] ${idPeticion}`, e?.stack || e);
+    return json({ error: 'Algo falló en el servidor. Inténtalo de nuevo.', id: idPeticion }, 500, { 'x-request-id': idPeticion });
   }
 }
