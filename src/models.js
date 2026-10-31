@@ -31,6 +31,7 @@ export const FUNCIONES = [
   { id: 'borrador', nombre: 'Borradores y lluvia de ideas', ayuda: 'Muchas versiones baratas para explorar. Buen sitio para un modelo económico.', defecto: 'claude-haiku-5-5' },
   { id: 'critica', nombre: 'Criticar y puntuar', ayuda: 'Una segunda lectura de una letra contra las reglas del cerebro.', defecto: 'claude-haiku-5-5' },
   { id: 'reglas', nombre: 'Proponer reglas aprendidas', ayuda: 'Tras un rechazo, redacta la regla NUNCA/SIEMPRE.', defecto: 'claude-haiku-5-5' },
+  { id: 'ensenar', nombre: 'Guardar lo que enseñas en el chat', ayuda: 'Convierte lo que explicas (conceptos, estructuras, métricas, reglas) en notas propuestas. Aquí importa el criterio.', defecto: 'claude-sonnet-5-5' },
   { id: 'conectar', nombre: 'Sugerir enlaces', ayuda: 'Propone con qué notas conectar una nota suelta.', defecto: 'claude-haiku-5-5' },
 ];
 const IDS_FUNCION = new Set(FUNCIONES.map((f) => f.id));

@@ -6,6 +6,7 @@ import { flujo } from '../api.js';
 import { parsear, primeraLinea } from '../lyric.js';
 import { vistaDeLetra, abrirParaSuno, copiarTextoLimpio } from '../letra-ui.js';
 import { ofrecerAprender } from '../aprender.js';
+import { ensenarAlCerebro } from '../ensenar.js';
 import { textoLimpio } from '../formato.js';
 import { Graph3D } from '../graph3d.js';
 
@@ -111,6 +112,7 @@ export async function montar(el, { param }) {
   const anuncio = h('div.sr', { role: 'status', 'aria-live': 'polite' });   // el lector avisa de lo importante sin leer la letra a cada fragmento
   const anunciar = (t) => { anuncio.textContent = ''; setTimeout(() => { anuncio.textContent = t; }, 50); };
   const entrada = h('textarea', { rows: 1, placeholder: esMovil() ? 'Pregúntale al cerebro…' : `Pregúntale al cerebro de ${brain?.name || 'este artista'}…`, 'aria-label': 'Mensaje' });
+  const ensenarBtn = h('button.teach', { type: 'button', 'aria-label': 'Enseñar al cerebro lo que escribiste', title: 'Enseñar: guarda lo que escribiste (conceptos, estructuras, métricas, reglas…) en el cerebro', onclick: () => ensenarAlCerebro({ texto: entrada.value, chatId, alGuardar: () => { entrada.value = ''; ajustarAlto(); } }) }, icono('brain', 18));
   const enviarBtn = h('button.send', { 'aria-label': 'Enviar', title: 'Enviar (Enter)', onclick: () => (ctrl ? ctrl.abort() : enviarTexto()) }, icono('send'));
   const rapidas = h('div.quick', RAPIDAS.map(([t, txt]) => h('button', { onclick: () => { entrada.value = txt; ajustarAlto(); entrada.focus(); } }, t)));
   const ajustarAlto = () => { entrada.style.height = 'auto'; entrada.style.height = Math.min(180, entrada.scrollHeight) + 'px'; };
@@ -125,7 +127,7 @@ export async function montar(el, { param }) {
       h('button.btn.ghost.small.solo-escritorio', { title: 'Renombrar', 'aria-label': 'Renombrar conversación', onclick: renombrarChat }, icono('edit')),
       h('button.btn.ghost.small.solo-escritorio', { title: 'Borrar conversación', 'aria-label': 'Borrar conversación', onclick: borrarChat }, icono('trash')),
       h('div', { style: { flex: 1 } }), h('div.field.solo-escritorio', { style: { width: '230px', maxWidth: '40vw' } }, modeloSelTop), mapaBtn),
-    msgsEl, anuncio, h('div.composer', h('div.inner', rapidas, h('div.box', entrada, enviarBtn))));
+    msgsEl, anuncio, h('div.composer', h('div.inner', rapidas, h('div.box', entrada, ensenarBtn, enviarBtn))));
 
   const mapaEl = h('aside.mapcol', { 'aria-label': 'Lo que lee el cerebro' });
   const estudio = h('div.studio' + (verMapa ? '.with-map' : ''), constructor_, chat, verMapa ? mapaEl : null);
