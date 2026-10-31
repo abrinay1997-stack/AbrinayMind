@@ -142,16 +142,25 @@ ${memoriaFija || '(este cerebro aún no tiene notas marcadas «siempre»)'}
 </memoria_fija>`;
 }
 
-export function sistemaVariable({ modos, modo, modosSel = modo ? [modo] : [], libre = false, conversacion = false, modoTexto, recuperadas, medidas = [], hoy = new Date().toISOString().slice(0, 10) }) {
-  const ejemplos = recuperadas.filter((b) => b.motivo === 'ejemplo'), resto = recuperadas.filter((b) => b.motivo !== 'ejemplo');
+/**
+ * Lo que en un mismo encargo/conversación NO cambia entre turnos (modo, medidas, ejemplos de su voz): va en su propio bloque con caché.
+ * Lo que sí cambia cada vez (la fecha y lo que encontró la búsqueda) va aparte, sin caché.
+ */
+export function sistemaEstable({ modos, modo, modosSel = modo ? [modo] : [], libre = false, conversacion = false, modoTexto, recuperadas, medidas = [] }) {
+  const ejemplos = recuperadas.filter((b) => b.motivo === 'ejemplo');
   const lista = modos.length ? `Modos disponibles: ${modos.map((m) => `«${m.nombre}»`).join(', ')}.` : 'Este cerebro no define modos.';
   const estado = modosSel.length > 1 ? `Modo del encargo: MEZCLA de ${modosSel.map((m) => `«${m.nombre}»`).join(' + ')} (${modoTexto}).` : modosSel.length ? `Modo del encargo: «${modosSel[0].nombre}» (${modoTexto}).` : libre ? 'Modo del encargo: LIBRE (combina los modos disponibles como convenga a la canción).' : conversacion ? '' : modos.length ? 'Modo del encargo: INCIERTO (no escribas la letra; pregunta).' : '';
   const vara = medidas.length ? `Medidas de sus ejemplos (estimadas por máquina): ${medidas.map((m) => `«${m.nombre}»: mediana de ${m.mediana} sílabas por verso (rango ${m.min}–${m.max}), ${Math.round(m.densidadRima * 100)} % de los versos riman con uno cercano`).join(' · ')}. Apunta a ese orden de magnitud; son orientativas, no reglas.\n` : '';
-  return `HOY: ${hoy}
-${lista}
+  return `${lista}
 ${estado}
-${vara}
-${ejemplos.length ? `<ejemplos_de_su_voz>\n${ejemplos.map(bloqueXml).join('\n\n')}\n</ejemplos_de_su_voz>\n\n` : ''}<recuperado>
+${vara}${ejemplos.length ? `<ejemplos_de_su_voz>\n${ejemplos.map(bloqueXml).join('\n\n')}\n</ejemplos_de_su_voz>` : ''}`.trim();
+}
+
+export function sistemaVolatil({ recuperadas, hoy = new Date().toISOString().slice(0, 10) }) {
+  const resto = recuperadas.filter((b) => b.motivo !== 'ejemplo');
+  return `HOY: ${hoy}
+
+<recuperado>
 ${resto.map(bloqueXml).join('\n\n') || '(la búsqueda no encontró nada más para este encargo)'}
 </recuperado>`;
 }

@@ -8,7 +8,7 @@ import { leerAjustes, elegirModelo, llamarEnFlujo, llamar, PROVEEDORES, costo, e
 import * as uso from './usage.js';
 import { aprenderPalabras } from './aprender-modos.js';
 import { HERRAMIENTAS, crearEjecutor, cambiosPublicos } from './herramientas.js';
-import { armarContexto, resolverModo, nombresDeModos, modosDelCerebro, sistemaFijo, sistemaVariable, encargoTexto, consultaDeEncargo } from './context.js';
+import { armarContexto, resolverModo, nombresDeModos, modosDelCerebro, sistemaFijo, sistemaEstable, sistemaVolatil, encargoTexto, consultaDeEncargo } from './context.js';
 
 const enc = new TextEncoder();
 const sse = (evento, datos) => enc.encode(`event: ${evento}\ndata: ${JSON.stringify(datos)}\n\n`);
@@ -23,6 +23,16 @@ export function tokensDe(fn, brief) {
   if (fn === 'critica') return 4000;
   const v = Math.min(3, Math.max(1, Number(brief?.versiones) || 1));
   return 12_000 + (v - 1) * 6000;
+}
+
+/**
+ * El historial que se reenvía: las letras largas de turnos ANTERIORES se recortan (encarecen cada turno y empujan al modelo a copiar borradores viejos).
+ * Se conservan íntegros los 2 últimos mensajes del cerebro y los 2 últimos del artista (ahí está lo que se está trabajando).
+ */
+export function compactarHistorial(msgs, { conservar = 2, max = 1500, cabeza = 500 } = {}) {
+  const intactos = new Set();
+  for (const rol of ['assistant', 'user']) { let n = 0; for (let i = msgs.length - 1; i >= 0 && n < conservar; i--) if (msgs[i].role === rol) { intactos.add(i); n++; } }
+  return msgs.map((m, i) => (intactos.has(i) || String(m.content).length <= max ? m : { ...m, content: `${String(m.content).slice(0, cabeza).replace(/\s+\S*$/, '')}\n[…recortado: era un mensaje largo de un turno anterior (${String(m.content).length} letras); se conserva el principio…]` }));
 }
 
 /* ---------- conversaciones ---------- */
@@ -171,9 +181,11 @@ export async function mensaje(env, ctx, db, brain, chatId, datos, { fetchFn = fe
 
   const contexto = await armarContexto(env, db, brain, { consulta, modo: res.modos.map((m) => m.nota), anclas, previas, profundidad, entrena: !!modelo.entrena });
   const modoTexto = res.modos.length ? (res.origen === 'detectado' ? `detectado: ${res.motivo}` : res.origen === 'continua' ? 'sigue el de la conversación' : 'elegido por el artista') : '';
-  const sistema = [{ text: sistemaFijo(brain, contexto.plan.fijas, { herramientas: modoHerramientas }), cache: true }, { text: sistemaVariable({ modos, modosSel: res.modos, libre: res.origen === 'libre', conversacion: res.origen === 'conversacion', modoTexto, recuperadas: contexto.plan.recuperadas, medidas: contexto.medidas }) }];
+  const estable = sistemaEstable({ modos, modosSel: res.modos, libre: res.origen === 'libre', conversacion: res.origen === 'conversacion', modoTexto, recuperadas: contexto.plan.recuperadas, medidas: contexto.medidas });
+  // tres bloques: lo fijo (caché), lo estable del encargo —modo, medidas, ejemplos— (caché) y lo que cambia cada turno (sin caché)
+  const sistema = [{ text: sistemaFijo(brain, contexto.plan.fijas, { herramientas: modoHerramientas }), cache: true }, { text: estable, cache: true }, { text: sistemaVolatil({ recuperadas: contexto.plan.recuperadas }) }];
 
-  const mensajes = [...previos.map((m) => ({ role: m.role, content: m.content })), { role: 'user', content: mensajeUsuario }];
+  const mensajes = [...compactarHistorial(previos.map((m) => ({ role: m.role, content: m.content }))), { role: 'user', content: mensajeUsuario }];
   while (mensajes.length && mensajes[0].role !== 'user') mensajes.shift();
 
   const t0 = ahora();
