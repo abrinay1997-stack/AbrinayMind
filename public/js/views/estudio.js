@@ -142,6 +142,7 @@ export async function montar(el, { param }) {
       h('button.btn.small.solo-escritorio', { onclick: () => corregirVersion(m, v) }, icono('edit'), 'Corregir'),
       h('button.btn.small.solo-escritorio', { onclick: () => abrirParaSuno({ titulo: m.meta?.brief?.titulo, version: v, brief: m.meta?.brief }) }, icono('upload'), 'Para Suno'),
       h('button.btn.ghost.small.solo-escritorio', { onclick: () => copiarTextoLimpio(v, m.meta?.brief?.titulo) }, icono('copy'), 'Copiar letra'),
+      h('button.btn.small.solo-escritorio', { onclick: () => pulir(m, v) }, icono('sparkle'), 'Pulir con mis reglas'),
       h('button.btn.ghost.small.solo-escritorio', { onclick: () => refinar(v) }, icono('edit'), 'Refinar'),
       h('button.btn.small.solo-movil', { 'aria-label': 'Más acciones de esta versión', 'aria-haspopup': 'dialog', onclick: () => menuVersion(m, v) }, icono('more'))) : null });
   }
@@ -162,10 +163,13 @@ export async function montar(el, { param }) {
         ofrecerAprender({ antes, despues, titulo: m.meta?.brief?.titulo || primeraLinea(v), modo: m.meta?.modo?.nota || '' });
       } }] });
   }
+  /** «Pulir con mis reglas»: el cerebro revisa la letra contra las reglas de oro y lo aprendido, dice qué incumple y entrega la versión corregida (en el mismo modo). */
+  const PULIR = 'Pule esta letra contra mis reglas. 1) Revísala línea por línea contra las reglas de oro, las reglas aprendidas y el modo. 2) Di en una línea por cada regla que incumple (solo las que incumple) dónde y por qué. 3) Entrega la versión corregida completa, cambiando solo lo necesario: no toques lo marcado NO TOCAR ni la idea central.\n\nLETRA:\n';
+  const pulir = (m, v) => { if (!ctrl) enviar({ texto: PULIR + v.crudo, fn: 'letra', modo: m.meta?.modo?.notas?.length ? m.meta.modo.notas : m.meta?.modo?.nota || null }); };
   const refinar = (v) => { entrada.value = `Refina la ${v.etiqueta ? 'versión ' + v.etiqueta : 'letra'}: `; ajustarAlto(); entrada.focus(); };
   function menuVersion(m, v) {
     const fila = (ic, t, fn) => h('button.list-row', { style: { textAlign: 'left', width: '100%' }, onclick: () => { d.cerrar(); fn(); } }, icono(ic), h('div.grow', h('b', t)));
-    const d = dialogo({ titulo: v.etiqueta ? `Versión ${v.etiqueta}` : 'Esta letra', cuerpo: h('div.stack', { style: { gap: '8px' } }, fila('edit', 'Corregir la letra', () => corregirVersion(m, v)), fila('upload', 'Copiar para Suno', () => abrirParaSuno({ titulo: m.meta?.brief?.titulo, version: v, brief: m.meta?.brief })), fila('copy', 'Copiar la letra (texto limpio)', () => copiarTextoLimpio(v, m.meta?.brief?.titulo)), fila('edit', 'Refinar esta versión', () => refinar(v)), fila('copy', 'Copiar todo el mensaje (con notas técnicas)', () => copiar(m.content))) });
+    const d = dialogo({ titulo: v.etiqueta ? `Versión ${v.etiqueta}` : 'Esta letra', cuerpo: h('div.stack', { style: { gap: '8px' } }, fila('edit', 'Corregir la letra', () => corregirVersion(m, v)), fila('upload', 'Copiar para Suno', () => abrirParaSuno({ titulo: m.meta?.brief?.titulo, version: v, brief: m.meta?.brief })), fila('copy', 'Copiar la letra (texto limpio)', () => copiarTextoLimpio(v, m.meta?.brief?.titulo)), fila('sparkle', 'Pulir con mis reglas', () => pulir(m, v)), fila('edit', 'Refinar esta versión', () => refinar(v)), fila('copy', 'Copiar todo el mensaje (con notas técnicas)', () => copiar(m.content))) });
   }
   function menuChat() {
     const fila = (ic, t, fn, peligro) => h('button.list-row', { style: { textAlign: 'left', width: '100%', ...(peligro ? { color: 'var(--bad)' } : {}) }, onclick: () => { d.cerrar(); fn(); } }, icono(ic), h('div.grow', h('b', t)));
@@ -290,7 +294,7 @@ export async function montar(el, { param }) {
     const ok = await enviar({ texto, fn: 'chat' }); if (!ok) { entrada.value = texto; ajustarAlto(); }
   }
 
-  async function enviar({ brief, texto, fn, modo = null }) {
+  async function enviar({ brief, texto, fn, modo = null, aprenderModo = false }) {
     if (ctrl) return false;
     let id;
     try { id = await asegurarChat(brief?.titulo || brief?.tema || texto); } catch (e) { fallo(e); return false; }
@@ -304,11 +308,11 @@ export async function montar(el, { param }) {
     ctrl = new AbortController(); enviarBtn.replaceChildren(icono('x')); enviarBtn.title = 'Detener'; enviarBtn.setAttribute('aria-label', 'Detener');
     let acumulado = '', info = null, hecho = null, fallido = null, pendiente = 0, interrumpido = false;
     const pintarCuerpo = () => { pendiente = 0; const pegado = cercaDelFinal(); poner(cuerpo, acumulado ? bloquesDeLetra(acumulado, null, { enVivo: true }) : null); if (pegado) abajo(); };
-    const cuerpoPeticion = { fn, anclas: [...S.anclas], modo: modo || modoDelForm(), ...(f.modelo ? { model: f.modelo } : {}), ...(f.profundidad ? { profundidad: f.profundidad } : {}), ...(brief ? { brief } : { texto }) };
+    const cuerpoPeticion = { fn, anclas: [...S.anclas], modo: modo || modoDelForm(), ...(aprenderModo ? { aprenderModo: true } : {}), ...(f.modelo ? { model: f.modelo } : {}), ...(f.profundidad ? { profundidad: f.profundidad } : {}), ...(brief ? { brief } : { texto }) };
     try {
       await flujo(`${A.base}chats/${encodeURIComponent(id)}/message`, cuerpoPeticion, {
         contexto(i) {
-          info = i; poner(quien, orbe, h('b', { style: { color: 'var(--text-2)', fontWeight: 600 } }, brain?.name || 'Cerebro'), h('span', i.modelo.nombre), i.modelo.entrena ? h('span.tag.warn', 'entrena') : null, i.modo?.nombre ? h('span.tag.accent', i.modo.nombre) : i.modo?.pregunta ? h('span.tag.warn', 'modo incierto') : null);
+          info = i; if (i.modo?.aprendidas?.length) aviso(`Aprendí que ${i.modo.aprendidas.map((x) => `«${x}»`).join(', ')} suele${i.modo.aprendidas.length > 1 ? 'n' : ''} ser ${i.modo.nombre}. Puedes ajustarlo en la nota del modo.`, 'good', 7000); poner(quien, orbe, h('b', { style: { color: 'var(--text-2)', fontWeight: 600 } }, brain?.name || 'Cerebro'), h('span', i.modelo.nombre), i.modelo.entrena ? h('span.tag.warn', 'entrena') : null, i.modo?.nombre ? h('span.tag.accent', i.modo.nombre) : i.modo?.pregunta ? h('span.tag.warn', 'modo incierto') : null);
           poner(leida, cajaLeida(i)); for (const a of i.avisos || []) aviso(a, '', 6000); marcarMapa(i, true);
         },
         texto(t) { acumulado += t; orbe.classList.remove('think'); if (!pendiente) pendiente = requestAnimationFrame(pintarCuerpo); },
@@ -340,7 +344,7 @@ export async function montar(el, { param }) {
     if (info?.modo?.pregunta && modosDisponibles.length) {
       const orden = [...modosDisponibles].sort((a, b) => (b.nota === info.modo.sugerido) - (a.nota === info.modo.sugerido));
       (msgsInner.querySelector('.msg.bot:last-child .msg-foot') || pie).append(h('div.row.wrap', { style: { gap: '6px', marginTop: '8px' }, role: 'group', 'aria-label': 'Elegir el modo y volver a intentarlo' },
-        h('span.faint', 'Elige el modo:'), orden.map((m) => h('button.btn.small' + (m.nota === info.modo.sugerido ? '.primary' : ''), { onclick: () => enviar({ brief, texto, fn, modo: m.nota }) }, m.nombre))));
+        h('span.faint', 'Elige el modo:'), orden.map((m) => h('button.btn.small' + (m.nota === info.modo.sugerido ? '.primary' : ''), { onclick: () => enviar({ brief, texto, fn, modo: m.nota, aprenderModo: true }) }, m.nombre))));
     }
     return true;
   }
