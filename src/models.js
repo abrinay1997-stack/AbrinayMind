@@ -31,7 +31,6 @@ export const FUNCIONES = [
   { id: 'borrador', nombre: 'Borradores y lluvia de ideas', ayuda: 'Muchas versiones baratas para explorar. Buen sitio para un modelo económico.', defecto: 'claude-haiku-5-5' },
   { id: 'critica', nombre: 'Criticar y puntuar', ayuda: 'Una segunda lectura de una letra contra las reglas del cerebro.', defecto: 'claude-haiku-5-5' },
   { id: 'reglas', nombre: 'Proponer reglas aprendidas', ayuda: 'Tras un rechazo, redacta la regla NUNCA/SIEMPRE.', defecto: 'claude-haiku-5-5' },
-  { id: 'ensenar', nombre: 'Guardar lo que enseñas en el chat', ayuda: 'Convierte lo que explicas (conceptos, estructuras, métricas, reglas) en notas propuestas. Aquí importa el criterio.', defecto: 'claude-sonnet-5-5' },
   { id: 'conectar', nombre: 'Sugerir enlaces', ayuda: 'Propone con qué notas conectar una nota suelta.', defecto: 'claude-haiku-5-5' },
 ];
 const IDS_FUNCION = new Set(FUNCIONES.map((f) => f.id));
@@ -41,7 +40,7 @@ export const PENSAMIENTOS = ['apagado', 'normal', 'profundo'];
 export const PRESUPUESTO_PENSAR = { normal: { letra: 4000, chat: 2000, borrador: 0, critica: 0 }, profundo: { letra: 10000, chat: 5000, borrador: 2000, critica: 0 } };
 export const presupuestoPensar = (nivel, fn) => PRESUPUESTO_PENSAR[nivel]?.[fn] || 0;
 
-export const AJUSTES_VACIOS = () => ({ funciones: {}, entrena: false, profundidad: 'normal', pensamiento: 'normal', tope_mensual_usd: null });
+export const AJUSTES_VACIOS = () => ({ funciones: {}, entrena: false, profundidad: 'normal', pensamiento: 'normal', escritura_ia: true, tope_mensual_usd: null });
 
 export async function leerAjustes(db) {
   const a = await leerAjuste(db, 'models', null);
@@ -60,6 +59,7 @@ export function validarAjustes(raw) {
   }
   if (o.entrena !== undefined) v.entrena = o.entrena === true;
   if (o.profundidad !== undefined) { if (!PROFUNDIDADES.includes(o.profundidad)) errores.push('La profundidad es ligera, normal o profunda.'); else v.profundidad = o.profundidad; }
+  if (o.escritura_ia !== undefined) v.escritura_ia = o.escritura_ia === true;
   if (o.pensamiento !== undefined) { if (!PENSAMIENTOS.includes(o.pensamiento)) errores.push('El pensamiento es apagado, normal o profundo.'); else v.pensamiento = o.pensamiento; }
   if (o.tope_mensual_usd !== undefined && o.tope_mensual_usd !== null && o.tope_mensual_usd !== '') {
     const t = Number(o.tope_mensual_usd); if (!(t >= 0 && t <= 10000)) errores.push('El tope mensual es un número de dólares entre 0 y 10.000.'); else v.tope_mensual_usd = t;
@@ -117,7 +117,7 @@ export function errorDeApi(status, datos, modelo) {
 const baseDe = (env, p) => String(env[p.baseVar] || p.base).replace(/\/+$/, '');
 
 /** Arma la petición al proveedor (puro: se prueba sin red). `sistema`: texto, o bloques [{ text, cache }] para el prefijo con caché. */
-export function armarLlamada(env, modelo, { sistema, mensajes, maxTokens = 4096, stream = false, temperatura = null, pensar = 0 }) {
+export function armarLlamada(env, modelo, { sistema, mensajes, maxTokens = 4096, stream = false, temperatura = null, pensar = 0, herramientas = null }) {
   const p = PROVEEDORES[modelo.proveedor];
   const bloques = typeof sistema === 'string' ? [{ text: sistema }] : sistema;
   const cuerpo = { model: modelo.id, max_tokens: maxTokens, messages: mensajes };
@@ -128,6 +128,7 @@ export function armarLlamada(env, modelo, { sistema, mensajes, maxTokens = 4096,
   if (modelo.proveedor === 'anthropic') {
     cuerpo.system = bloques.map((b) => ({ type: 'text', text: b.text, ...(b.cache ? { cache_control: { type: 'ephemeral' } } : {}) }));
     if (stream) cuerpo.stream = true;
+    if (herramientas?.length) cuerpo.tools = herramientas;
   } else {
     cuerpo.system = bloques.map((b) => b.text).join('\n\n');
   }
