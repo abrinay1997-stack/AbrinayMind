@@ -35,8 +35,12 @@ export const FUNCIONES = [
 ];
 const IDS_FUNCION = new Set(FUNCIONES.map((f) => f.id));
 export const PROFUNDIDADES = ['ligera', 'normal', 'profunda'];
+export const PENSAMIENTOS = ['apagado', 'normal', 'profundo'];
+/** Tokens que el modelo puede gastar pensando antes de contestar (0 = sin pensamiento extendido). Solo letras y conversación: críticas y enlaces no lo necesitan. */
+export const PRESUPUESTO_PENSAR = { normal: { letra: 4000, chat: 2000, borrador: 0, critica: 0 }, profundo: { letra: 10000, chat: 5000, borrador: 2000, critica: 0 } };
+export const presupuestoPensar = (nivel, fn) => PRESUPUESTO_PENSAR[nivel]?.[fn] || 0;
 
-export const AJUSTES_VACIOS = () => ({ funciones: {}, entrena: false, profundidad: 'normal', tope_mensual_usd: null });
+export const AJUSTES_VACIOS = () => ({ funciones: {}, entrena: false, profundidad: 'normal', pensamiento: 'normal', tope_mensual_usd: null });
 
 export async function leerAjustes(db) {
   const a = await leerAjuste(db, 'models', null);
@@ -55,6 +59,7 @@ export function validarAjustes(raw) {
   }
   if (o.entrena !== undefined) v.entrena = o.entrena === true;
   if (o.profundidad !== undefined) { if (!PROFUNDIDADES.includes(o.profundidad)) errores.push('La profundidad es ligera, normal o profunda.'); else v.profundidad = o.profundidad; }
+  if (o.pensamiento !== undefined) { if (!PENSAMIENTOS.includes(o.pensamiento)) errores.push('El pensamiento es apagado, normal o profundo.'); else v.pensamiento = o.pensamiento; }
   if (o.tope_mensual_usd !== undefined && o.tope_mensual_usd !== null && o.tope_mensual_usd !== '') {
     const t = Number(o.tope_mensual_usd); if (!(t >= 0 && t <= 10000)) errores.push('El tope mensual es un número de dólares entre 0 y 10.000.'); else v.tope_mensual_usd = t;
   }
@@ -111,11 +116,14 @@ export function errorDeApi(status, datos, modelo) {
 const baseDe = (env, p) => String(env[p.baseVar] || p.base).replace(/\/+$/, '');
 
 /** Arma la petición al proveedor (puro: se prueba sin red). `sistema`: texto, o bloques [{ text, cache }] para el prefijo con caché. */
-export function armarLlamada(env, modelo, { sistema, mensajes, maxTokens = 4096, stream = false, temperatura = null }) {
+export function armarLlamada(env, modelo, { sistema, mensajes, maxTokens = 4096, stream = false, temperatura = null, pensar = 0 }) {
   const p = PROVEEDORES[modelo.proveedor];
   const bloques = typeof sistema === 'string' ? [{ text: sistema }] : sistema;
   const cuerpo = { model: modelo.id, max_tokens: maxTokens, messages: mensajes };
-  if (temperatura != null) cuerpo.temperature = temperatura;
+  if (modelo.proveedor === 'anthropic' && pensar >= 1024) {
+    // pensamiento extendido: el modelo razona antes de escribir. Exige max_tokens > presupuesto y no admite temperature.
+    cuerpo.thinking = { type: 'enabled', budget_tokens: pensar }; cuerpo.max_tokens = maxTokens + pensar;
+  } else if (temperatura != null) cuerpo.temperature = temperatura;
   if (modelo.proveedor === 'anthropic') {
     cuerpo.system = bloques.map((b) => ({ type: 'text', text: b.text, ...(b.cache ? { cache_control: { type: 'ephemeral' } } : {}) }));
     if (stream) cuerpo.stream = true;
@@ -124,7 +132,7 @@ export function armarLlamada(env, modelo, { sistema, mensajes, maxTokens = 4096,
   }
   const cab = { 'content-type': 'application/json', 'anthropic-version': '2023-06-01' };
   if (modelo.proveedor === 'meta') cab.authorization = `Bearer ${llaveDe(env, 'meta')}`; else cab['x-api-key'] = llaveDe(env, 'anthropic');
-  return { url: baseDe(env, p) + p.ruta, cabeceras: cab, cuerpo };
+  return { url: baseDe(env, p) + p.ruta, cabeceras: cab, cuerpo, pensado: cuerpo.thinking ? pensar : 0 };
 }
 
 const REINTENTABLES = new Set([408, 425, 429, 500, 502, 503, 504, 529]);
@@ -149,6 +157,10 @@ async function pedirConReintentos(modelo, r, { fetchFn, senal, esperas = ESPERAS
       clearTimeout(reloj);
       if (res.ok) return res;
       const datos = await res.json().catch(() => null);
+      if (res.status === 400 && r.cuerpo.thinking && /thinking/i.test(JSON.stringify(datos?.error || datos || ''))) {
+        // este modelo no acepta ese pensamiento extendido: se escribe igual, sin él (no cuenta como intento)
+        delete r.cuerpo.thinking; r.cuerpo.max_tokens = Math.max(1024, r.cuerpo.max_tokens - (r.pensado || 0)); intento--; continue;
+      }
       ultimo = new HttpError(res.status === 429 ? 429 : 502, errorDeApi(res.status, datos, modelo));
       if (!REINTENTABLES.has(res.status)) throw ultimo;
       const ra = Number(res.headers?.get?.('retry-after')); if (ra > 0) espera = Math.min(5000, Math.max(espera, ra * 1000));

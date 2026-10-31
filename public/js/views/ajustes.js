@@ -12,7 +12,7 @@ export async function montar(el) {
   async function cargar() { m = await modelos(true); pintarTodo(); }
 
   async function guardar(parcial, { revertir } = {}) {
-    const a = m.ajustes, nuevo = { funciones: { ...a.funciones }, entrena: a.entrena, profundidad: a.profundidad, tope_mensual_usd: a.tope_mensual_usd, ...parcial };
+    const a = m.ajustes, nuevo = { funciones: { ...a.funciones }, entrena: a.entrena, profundidad: a.profundidad, pensamiento: a.pensamiento, tope_mensual_usd: a.tope_mensual_usd, ...parcial };
     try { await PUT('/api/settings', nuevo); await cargar(); aviso('Guardado.', 'good', 1400); bus.dispatchEvent(new Event('gasto')); }
     catch (e) { fallo(e); revertir?.(); await cargar(); }
   }
@@ -31,7 +31,7 @@ export async function montar(el) {
     const a = m.ajustes, g = m.gasto;
     poner(raiz, h('h1', 'Ajustes'), h('p.lead', 'Los secretos viven en Cloudflare, no aquí. Aquí eliges qué modelo hace cada trabajo y cuánto estás dispuesto a gastar.'),
       h('div.stack', { style: { gap: '16px' } },
-        tarjetaLlaves(), tarjetaFunciones(a), tarjetaEntrena(a), tarjetaProfundidad(a), tarjetaGasto(a, g)));
+        tarjetaLlaves(), tarjetaFunciones(a), tarjetaEntrena(a), tarjetaProfundidad(a), tarjetaPensamiento(a), tarjetaGasto(a, g)));
   }
 
   function tarjetaLlaves() {
@@ -69,6 +69,13 @@ export async function montar(el) {
   function tarjetaProfundidad(a) {
     return h('section.card', h('h2', 'Profundidad de lectura'), h('p.sub', 'Cuánta memoria recupera el cerebro (además de las notas fijas) antes de cada respuesta. Más profundidad = letras más informadas y más tokens.'),
       h('div.filters', { style: { marginBottom: '6px' } }, Object.entries(PROF).map(([id, [t]]) => h('button', { 'aria-pressed': a.profundidad === id ? 'true' : 'false', onclick: () => guardar({ profundidad: id }) }, t))), h('p.faint', { style: { margin: 0, fontSize: '12.5px' } }, PROF[a.profundidad][1]));
+  }
+
+  const PENSAR = { apagado: ['Apagado', 'Responde directo. Más rápido y barato, con menos razonamiento.'], normal: ['Normal', 'Antes de escribir una letra o contestar, el cerebro razona un rato: elige la idea central, qué reglas aplican y cómo cierra. Recomendado.'], profundo: ['Profundo', 'Razona más a fondo. Mejores letras difíciles, más lento y más tokens (se cobran como salida).'] };
+  function tarjetaPensamiento(a) {
+    const nivel = a.pensamiento || 'normal';
+    return h('section.card', h('h2', 'Pensamiento del cerebro'), h('p.sub', 'Razonamiento antes de responder (solo con modelos Claude). No se muestra: mejora la letra, no la llena de explicaciones.'),
+      h('div.filters', { style: { marginBottom: '6px' } }, Object.entries(PENSAR).map(([id, [t]]) => h('button', { 'aria-pressed': nivel === id ? 'true' : 'false', onclick: () => guardar({ pensamiento: id }) }, t))), h('p.faint', { style: { margin: 0, fontSize: '12.5px' } }, PENSAR[nivel][1]));
   }
 
   function tarjetaGasto(a, g) {

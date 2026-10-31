@@ -16,14 +16,20 @@ export function modosDe(notas) {
     .sort((a, b) => a.orden - b.orden);
 }
 
+/** ¿Está la palabra (o frase) entera en el texto? «rap» no debe despertar con «trampa»; sí admite plural simple («calle» → «calles»). */
+function esta(f, p) {
+  const q = p.replace(/[^a-z0-9ñ]+/g, ' ').trim();
+  return !!q && (f.includes(` ${q} `) || f.includes(` ${q}s `) || f.includes(` ${q}es `));
+}
+
 /**
  * Qué modo parece pedir un texto, por las palabras que cada modo declara.
  * → { modo, confianza (0–1), motivo } | { modo: null, confianza: 0, motivo } — con confianza baja el cerebro pregunta, no adivina.
  */
 export function detectarModo(texto, modos) {
-  const f = ` ${fold(texto)} `;
+  const f = ` ${fold(texto).replace(/[^a-z0-9ñ]+/g, ' ')} `;
   const puntos = modos.map((m) => {
-    const aciertos = m.palabras.filter((p) => p && f.includes(p));
+    const aciertos = m.palabras.filter((p) => p && esta(f, p));
     return { m, n: aciertos.length, aciertos };
   }).sort((a, b) => b.n - a.n);
   const [primero, segundo] = puntos;
