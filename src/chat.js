@@ -4,7 +4,7 @@
 import { fold } from '../public/core/text.js';
 import { HttpError, bad, noEsta, ahora, idCorto, recortar } from './http.js';
 import { todas, una, correr, auditar } from './db.js';
-import { leerAjustes, elegirModelo, llamarEnFlujo, llamar, PROVEEDORES, costo, presupuestoPensar } from './models.js';
+import { leerAjustes, elegirModelo, llamarEnFlujo, llamar, PROVEEDORES, costo, esfuerzoDe } from './models.js';
 import * as uso from './usage.js';
 import { aprenderPalabras } from './aprender-modos.js';
 import { HERRAMIENTAS, crearEjecutor, cambiosPublicos } from './herramientas.js';
@@ -19,9 +19,10 @@ const INACTIVIDAD = 45_000;   // ms sin recibir nada del modelo antes de darlo p
 
 /** Tokens máximos de la respuesta: lo que cabe en la letra pedida (más versiones, más espacio) y el resto de tareas. */
 export function tokensDe(fn, brief) {
-  if (fn === 'critica') return 1500;
+  // los tokens de razonamiento cuentan dentro de max_tokens: un tope bajo corta la letra a medias (pasó con 4096)
+  if (fn === 'critica') return 4000;
   const v = Math.min(3, Math.max(1, Number(brief?.versiones) || 1));
-  return 4096 + (v - 1) * 2800;
+  return 12_000 + (v - 1) * 6000;
 }
 
 /* ---------- conversaciones ---------- */
@@ -200,7 +201,7 @@ export async function mensaje(env, ctx, db, brain, chatId, datos, { fetchFn = fe
   const bombear = async () => {
     const acum = acumulador(); let espaciado = false;
     let lector = lectorDeEventos(), upstream = null, reloj;
-    const maxTokens = tokensDe(fn, brief), pensar = presupuestoPensar(ajustes.pensamiento, fn);
+    const maxTokens = tokensDe(fn, brief), esfuerzo = esfuerzoDe(ajustes.pensamiento, fn);
     const ejecutor = conHerramientas ? crearEjecutor({ env, db, brain, cambios }) : null;
     const conversacion = mensajes.map((m) => ({ ...m }));
     // lee del proveedor con vigilancia: si pasa `inactividad` ms sin recibir nada, se da por colgado (y no se queda el spinner para siempre)
@@ -212,7 +213,7 @@ export async function mensaje(env, ctx, db, brain, chatId, datos, { fetchFn = fe
         for (let ronda = 0; ; ronda++) {
           lector = lectorDeEventos();
           const ultima = ronda >= MAX_RONDAS - 1;   // en la última vuelta se le obliga a contestar en texto con lo que ya leyó
-          const res2 = await llamarEnFlujo(env, modelo, { sistema, mensajes: conversacion, maxTokens, pensar, ...(ejecutor ? { herramientas: HERRAMIENTAS, sinHerramientas: ultima } : {}) }, { fetchFn, esperas, tiempos });
+          const res2 = await llamarEnFlujo(env, modelo, { sistema, mensajes: conversacion, maxTokens, esfuerzo, ...(ejecutor ? { herramientas: HERRAMIENTAS, sinHerramientas: ultima } : {}) }, { fetchFn, esperas, tiempos });
           upstream = res2.body.getReader();
           if (ronda > 0 && acum.texto && !espaciado) { espaciado = true; await w.write(enc.encode(`event: content_block_delta\ndata: ${JSON.stringify({ type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: '\n\n' } })}\n\n`)); }
           for (;;) {

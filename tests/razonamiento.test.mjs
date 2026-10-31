@@ -2,7 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { entorno, BOVEDA_CHICA } from './helpers.mjs';
-import { armarLlamada, validarAjustes, presupuestoPensar, modeloPorId } from '../src/models.js';
+import { armarLlamada, validarAjustes, esfuerzoDe, modeloPorId } from '../src/models.js';
 import { modosDe, detectarModo } from '../public/core/modes.js';
 import { resolverModo } from '../src/context.js';
 
@@ -25,35 +25,45 @@ async function conChat(opciones) {
 }
 const espiar = (fn) => { const f = async (url, init) => { const cuerpo = JSON.parse(init.body); f.cuerpos.push(cuerpo); return fn(f.cuerpos.length, cuerpo); }; f.cuerpos = []; return f; };
 
-test('pensamiento: la petición lleva el presupuesto, deja sitio a la respuesta y no manda temperature', () => {
+test('pensamiento: se controla con el esfuerzo (output_config.effort); nunca se manda budget_tokens ni thinking', () => {
   const m = modeloPorId('claude-sonnet-5-5');
-  const r = armarLlamada({ ANTHROPIC_API_KEY: 'k' }, m, { sistema: 'x', mensajes: [], maxTokens: 4096, temperatura: 0.7, pensar: 4000 });
-  assert.deepEqual(r.cuerpo.thinking, { type: 'enabled', budget_tokens: 4000 });
-  assert.equal(r.cuerpo.max_tokens, 8096); assert.equal(r.cuerpo.temperature, undefined);
-  const sin = armarLlamada({ ANTHROPIC_API_KEY: 'k' }, m, { sistema: 'x', mensajes: [], maxTokens: 4096, temperatura: 0.7 });
-  assert.equal(sin.cuerpo.thinking, undefined); assert.equal(sin.cuerpo.temperature, 0.7);
-  assert.equal(presupuestoPensar('normal', 'letra'), 4000); assert.equal(presupuestoPensar('normal', 'critica'), 0); assert.equal(presupuestoPensar('apagado', 'letra'), 0);
+  const r = armarLlamada({ ANTHROPIC_API_KEY: 'k' }, m, { sistema: 'x', mensajes: [], maxTokens: 12000, esfuerzo: 'high' });
+  assert.deepEqual(r.cuerpo.output_config, { effort: 'high' });
+  assert.equal(r.cuerpo.thinking, undefined, 'los Claude 5 rechazan budget_tokens con un 400: el pensamiento es adaptativo por defecto');
+  assert.equal(r.cuerpo.max_tokens, 12000);
+  const sin = armarLlamada({ ANTHROPIC_API_KEY: 'k' }, m, { sistema: 'x', mensajes: [], maxTokens: 4096 });
+  assert.equal(sin.cuerpo.output_config, undefined);
+  assert.equal(esfuerzoDe('normal', 'letra'), 'high'); assert.equal(esfuerzoDe('normal', 'chat'), 'medium'); assert.equal(esfuerzoDe('apagado', 'letra'), 'low'); assert.equal(esfuerzoDe('profundo', 'letra'), 'xhigh');
 });
 
-test('pensamiento: ajuste validado; en el chat se pide por defecto, el texto no se mezcla con el razonamiento y «apagado» lo quita', async () => {
+test('pensamiento: ajuste validado; el chat manda su esfuerzo, «apagado» lo baja y la letra no se mezcla con el razonamiento', async () => {
   assert.equal(validarAjustes({ pensamiento: 'profundo' }).valor.pensamiento, 'profundo');
   assert.equal(validarAjustes({ pensamiento: 'mucho' }).ok, false);
   const p = espiar(() => ok('Respuesta limpia.'));
   const a = await conChat({ proveedor: p });
   const r = await a.msg('hola');
-  assert.equal(p.cuerpos[0].thinking.budget_tokens, 2000);
+  assert.equal(p.cuerpos[0].output_config.effort, 'medium'); assert.equal(p.cuerpos[0].thinking, undefined);
   assert.equal(r.texto, 'Respuesta limpia.', 'el pensamiento no se cuela en la respuesta');
   assert.equal((await a.mensajes()).at(-1).content, 'Respuesta limpia.');
   await a.t.j('PUT', '/api/settings', { pensamiento: 'apagado' });
-  await a.msg('otra'); assert.equal(p.cuerpos[1].thinking, undefined);
+  await a.msg('otra'); assert.equal(p.cuerpos[1].output_config.effort, 'low');
 });
 
-test('pensamiento: si el modelo rechaza el pensamiento extendido (400), se contesta igual sin él y sin gastar un reintento', async () => {
-  const p = espiar((n) => (n === 1 ? new Response(JSON.stringify({ error: { message: 'thinking.type: not supported for this model' } }), { status: 400 }) : ok('Salió sin pensar.')));
+test('pensamiento: como la API real, un modelo que rechaza el esfuerzo (400) contesta igual sin él, sin gastar un reintento y sin recortar max_tokens', async () => {
+  const p = espiar((n) => (n === 1 ? new Response(JSON.stringify({ error: { message: 'output_config.effort: not supported for this model' } }), { status: 400 }) : ok('Salió sin esfuerzo.')));
   const a = await conChat({ proveedor: p });
   const r = await a.msg('hola');
-  assert.equal(p.cuerpos.length, 2); assert.equal(p.cuerpos[1].thinking, undefined); assert.equal(p.cuerpos[1].max_tokens, 4096);
-  assert.equal(r.texto, 'Salió sin pensar.');
+  assert.equal(p.cuerpos.length, 2); assert.equal(p.cuerpos[1].output_config, undefined); assert.equal(p.cuerpos[1].max_tokens, 12000);
+  assert.equal(r.texto, 'Salió sin esfuerzo.');
+});
+
+test('pensamiento: la letra no se corta a los 4096 tokens: el tope de salida deja sitio al razonamiento', async () => {
+  const p = espiar(() => ok('Va.'));
+  const a = await conChat({ proveedor: p });
+  await a.msg('', { fn: 'letra', brief: { titulo: 'x', versiones: 1 } }); await a.msg('', { fn: 'letra', brief: { titulo: 'x', versiones: 3 } }); await a.msg('hola');
+  assert.deepEqual(p.cuerpos.map((c) => c.max_tokens), [12000, 24000, 12000]);
+  assert.equal(p.cuerpos[0].output_config.effort, 'high');
+  assert.ok(p.cuerpos.every((c) => !/budget_tokens|"thinking":\{/.test(JSON.stringify(c))), 'ninguna petición lleva budget_tokens (la API real lo rechaza con 400 en Sonnet 5.5)');
 });
 
 const modos = modosDe([
