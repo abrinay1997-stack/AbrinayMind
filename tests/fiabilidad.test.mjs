@@ -48,11 +48,11 @@ test('lector del streaming: un delta con campos extra (sin el cierre habitual) t
   l.estado.texto = 'reemplazado'; assert.equal(l.estado.texto, 'reemplazado');
 });
 
-test('tokens: una versión 4096; más versiones, más espacio; la crítica, corta', () => {
-  assert.equal(tokensDe('letra', { versiones: 1 }), 4096);
+test('tokens: el tope deja sitio al razonamiento (que cuenta dentro de max_tokens); más versiones, más espacio; la crítica, corta', () => {
+  assert.equal(tokensDe('letra', { versiones: 1 }), 12000);
   assert.ok(tokensDe('letra', { versiones: 3 }) > tokensDe('letra', { versiones: 2 }));
-  assert.equal(tokensDe('chat', null), 4096);
-  assert.equal(tokensDe('critica', null), 1500);
+  assert.equal(tokensDe('chat', null), 12000);
+  assert.equal(tokensDe('critica', null), 4000);
   assert.equal(tokensDe('letra', { versiones: 99 }), tokensDe('letra', { versiones: 3 }));
 });
 
@@ -118,8 +118,7 @@ test('el constructor pide más espacio de salida cuando se piden varias versione
   const a = await conChat({ proveedor: p });
   await a.msg('', { fn: 'letra', brief: { titulo: 'x', versiones: 1 } });
   await a.msg('', { fn: 'letra', brief: { titulo: 'x', versiones: 3 } });
-  const pensar = 4000;   // el pensamiento (por defecto «normal») se suma al espacio de la letra
-  assert.deepEqual(visto, [4096 + pensar, tokensDe('letra', { versiones: 3 }) + pensar]);
+  assert.deepEqual(visto, [12000, tokensDe('letra', { versiones: 3 })]);
 });
 
 test('un fallo interno del servidor devuelve un código para encontrarlo en los registros', async () => {

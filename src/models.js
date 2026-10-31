@@ -36,9 +36,17 @@ export const FUNCIONES = [
 const IDS_FUNCION = new Set(FUNCIONES.map((f) => f.id));
 export const PROFUNDIDADES = ['ligera', 'normal', 'profunda'];
 export const PENSAMIENTOS = ['apagado', 'normal', 'profundo'];
-/** Tokens que el modelo puede gastar pensando antes de contestar (0 = sin pensamiento extendido). Solo letras y conversación: críticas y enlaces no lo necesitan. */
-export const PRESUPUESTO_PENSAR = { normal: { letra: 4000, chat: 2000, borrador: 0, critica: 0 }, profundo: { letra: 10000, chat: 5000, borrador: 2000, critica: 0 } };
-export const presupuestoPensar = (nivel, fn) => PRESUPUESTO_PENSAR[nivel]?.[fn] || 0;
+/**
+ * Cuánto razona el modelo. Los Claude 5.x piensan por sí mismos (pensamiento adaptativo, siempre disponible) y ya NO aceptan un presupuesto fijo de tokens
+ * (`budget_tokens` devuelve un 400): la profundidad se controla con `output_config.effort` (low | medium | high | xhigh | max).
+ * Los tokens de razonamiento cuentan dentro de `max_tokens`, por eso los límites de salida son amplios (ver `tokensDe` en chat.js).
+ */
+export const ESFUERZO = {
+  apagado: { letra: 'low', chat: 'low', borrador: 'low', critica: 'low' },
+  normal: { letra: 'high', chat: 'medium', borrador: 'low', critica: 'low' },
+  profundo: { letra: 'xhigh', chat: 'high', borrador: 'medium', critica: 'medium' },
+};
+export const esfuerzoDe = (nivel, fn) => ESFUERZO[nivel]?.[fn] || ESFUERZO.normal[fn] || 'medium';
 
 export const AJUSTES_VACIOS = () => ({ funciones: {}, entrena: false, profundidad: 'normal', pensamiento: 'normal', escritura_ia: true, tope_mensual_usd: null });
 
@@ -117,14 +125,12 @@ export function errorDeApi(status, datos, modelo) {
 const baseDe = (env, p) => String(env[p.baseVar] || p.base).replace(/\/+$/, '');
 
 /** Arma la petición al proveedor (puro: se prueba sin red). `sistema`: texto, o bloques [{ text, cache }] para el prefijo con caché. */
-export function armarLlamada(env, modelo, { sistema, mensajes, maxTokens = 4096, stream = false, temperatura = null, pensar = 0, herramientas = null, sinHerramientas = false }) {
+export function armarLlamada(env, modelo, { sistema, mensajes, maxTokens = 4096, stream = false, temperatura = null, esfuerzo = null, herramientas = null, sinHerramientas = false }) {
   const p = PROVEEDORES[modelo.proveedor];
   const bloques = typeof sistema === 'string' ? [{ text: sistema }] : sistema;
   const cuerpo = { model: modelo.id, max_tokens: maxTokens, messages: mensajes };
-  if (modelo.proveedor === 'anthropic' && pensar >= 1024) {
-    // pensamiento extendido: el modelo razona antes de escribir. Exige max_tokens > presupuesto y no admite temperature.
-    cuerpo.thinking = { type: 'enabled', budget_tokens: pensar }; cuerpo.max_tokens = maxTokens + pensar;
-  } else if (temperatura != null) cuerpo.temperature = temperatura;
+  if (temperatura != null) cuerpo.temperature = temperatura;
+  if (modelo.proveedor === 'anthropic' && esfuerzo) cuerpo.output_config = { effort: esfuerzo };   // sin `thinking`: en los Claude 5.x es adaptativo por defecto
   if (modelo.proveedor === 'anthropic') {
     cuerpo.system = bloques.map((b) => ({ type: 'text', text: b.text, ...(b.cache ? { cache_control: { type: 'ephemeral' } } : {}) }));
     if (stream) cuerpo.stream = true;
@@ -134,7 +140,7 @@ export function armarLlamada(env, modelo, { sistema, mensajes, maxTokens = 4096,
   }
   const cab = { 'content-type': 'application/json', 'anthropic-version': '2023-06-01' };
   if (modelo.proveedor === 'meta') cab.authorization = `Bearer ${llaveDe(env, 'meta')}`; else cab['x-api-key'] = llaveDe(env, 'anthropic');
-  return { url: baseDe(env, p) + p.ruta, cabeceras: cab, cuerpo, pensado: cuerpo.thinking ? pensar : 0 };
+  return { url: baseDe(env, p) + p.ruta, cabeceras: cab, cuerpo };
 }
 
 const REINTENTABLES = new Set([408, 425, 429, 500, 502, 503, 504, 529]);
@@ -159,9 +165,9 @@ async function pedirConReintentos(modelo, r, { fetchFn, senal, esperas = ESPERAS
       clearTimeout(reloj);
       if (res.ok) return res;
       const datos = await res.json().catch(() => null);
-      if (res.status === 400 && r.cuerpo.thinking && /thinking/i.test(JSON.stringify(datos?.error || datos || ''))) {
-        // este modelo no acepta ese pensamiento extendido: se escribe igual, sin él (no cuenta como intento)
-        delete r.cuerpo.thinking; r.cuerpo.max_tokens = Math.max(1024, r.cuerpo.max_tokens - (r.pensado || 0)); intento--; continue;
+      if (res.status === 400 && r.cuerpo.output_config && /effort|output_config/i.test(JSON.stringify(datos?.error || datos || ''))) {
+        // un modelo que no conoce `effort`: se escribe igual, sin él (no cuenta como intento)
+        delete r.cuerpo.output_config; intento--; continue;
       }
       ultimo = new HttpError(res.status === 429 ? 429 : 502, errorDeApi(res.status, datos, modelo));
       if (!REINTENTABLES.has(res.status)) throw ultimo;
