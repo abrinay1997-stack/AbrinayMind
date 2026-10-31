@@ -58,6 +58,7 @@ export async function flujo(ruta, cuerpo, manejadores, { senal } = {}) {
     if (!datos) return;
     let d; try { d = JSON.parse(datos); } catch { return; }
     if (evento === 'am_context') manejadores.contexto?.(d);
+    else if (evento === 'am_cambios') manejadores.cambios?.(d);
     else if (evento === 'am_done') manejadores.hecho?.(d);
     else if (evento === 'am_error') manejadores.error?.(d.error || 'Se cortó la respuesta.');
     else if (evento === 'error' || d.type === 'error') manejadores.error?.(d.error?.message || 'El proveedor devolvió un error.');

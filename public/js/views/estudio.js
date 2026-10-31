@@ -1,12 +1,11 @@
 // Abrinay Mind — Estudio: el constructor de canciones y la conversación con el cerebro, en el mismo hilo.
 // El cerebro lee primero (lo fijo, el modo, lo anclado, lo que encuentra la búsqueda y lo que despiertan las sinapsis), luego escribe.
 import { h, poner, vaciar, icono, aviso, fallo, dialogo, pedir, confirmar, copiar, usd, num, esMovil, debounce } from '../ui.js';
-import { S, api, bus, modelos, grafo, anclar, ir, irANota, recargarMeta } from '../store.js';
+import { S, api, bus, modelos, grafo, anclar, ir, irANota, recargarMeta, invalidarGrafo } from '../store.js';
 import { flujo } from '../api.js';
 import { parsear, primeraLinea } from '../lyric.js';
 import { vistaDeLetra, abrirParaSuno, copiarTextoLimpio } from '../letra-ui.js';
 import { ofrecerAprender } from '../aprender.js';
-import { ensenarAlCerebro } from '../ensenar.js';
 import { textoLimpio } from '../formato.js';
 import { Graph3D } from '../graph3d.js';
 
@@ -112,7 +111,6 @@ export async function montar(el, { param }) {
   const anuncio = h('div.sr', { role: 'status', 'aria-live': 'polite' });   // el lector avisa de lo importante sin leer la letra a cada fragmento
   const anunciar = (t) => { anuncio.textContent = ''; setTimeout(() => { anuncio.textContent = t; }, 50); };
   const entrada = h('textarea', { rows: 1, placeholder: esMovil() ? 'Pregúntale al cerebro…' : `Pregúntale al cerebro de ${brain?.name || 'este artista'}…`, 'aria-label': 'Mensaje' });
-  const ensenarBtn = h('button.teach', { type: 'button', 'aria-label': 'Enseñar al cerebro lo que escribiste', title: 'Enseñar: guarda lo que escribiste (conceptos, estructuras, métricas, reglas…) en el cerebro', onclick: () => ensenarAlCerebro({ texto: entrada.value, chatId, alGuardar: () => { entrada.value = ''; ajustarAlto(); } }) }, icono('brain', 18));
   const enviarBtn = h('button.send', { 'aria-label': 'Enviar', title: 'Enviar (Enter)', onclick: () => (ctrl ? ctrl.abort() : enviarTexto()) }, icono('send'));
   const rapidas = h('div.quick', RAPIDAS.map(([t, txt]) => h('button', { onclick: () => { entrada.value = txt; ajustarAlto(); entrada.focus(); } }, t)));
   const ajustarAlto = () => { entrada.style.height = 'auto'; entrada.style.height = Math.min(180, entrada.scrollHeight) + 'px'; };
@@ -127,7 +125,7 @@ export async function montar(el, { param }) {
       h('button.btn.ghost.small.solo-escritorio', { title: 'Renombrar', 'aria-label': 'Renombrar conversación', onclick: renombrarChat }, icono('edit')),
       h('button.btn.ghost.small.solo-escritorio', { title: 'Borrar conversación', 'aria-label': 'Borrar conversación', onclick: borrarChat }, icono('trash')),
       h('div', { style: { flex: 1 } }), h('div.field.solo-escritorio', { style: { width: '230px', maxWidth: '40vw' } }, modeloSelTop), mapaBtn),
-    msgsEl, anuncio, h('div.composer', h('div.inner', rapidas, h('div.box', entrada, ensenarBtn, enviarBtn))));
+    msgsEl, anuncio, h('div.composer', h('div.inner', rapidas, h('div.box', entrada, enviarBtn))));
 
   const mapaEl = h('aside.mapcol', { 'aria-label': 'Lo que lee el cerebro' });
   const estudio = h('div.studio' + (verMapa ? '.with-map' : ''), constructor_, chat, verMapa ? mapaEl : null);
@@ -191,6 +189,24 @@ export async function montar(el, { param }) {
     return h('div.corte', { role: 'note' }, h('span', texto), esUltima ? h('button.btn.small', { onclick: () => { if (!ctrl) enviar({ texto: CONTINUAR, fn: meta2.fn === 'letra' || meta2.fn === 'borrador' ? meta2.fn : 'chat' }); } }, icono('refresh'), 'Continuar') : null);
   }
 
+  /** Lo que la IA modificó en el cerebro durante una respuesta, con «Deshacer» por cambio y para todo (cuando el mensaje ya está guardado). */
+  function tarjetaCambios(lista, mid) {
+    const caja = h('div.cambios-ia', { role: 'group', 'aria-label': 'Cambios hechos en el cerebro' });
+    const pintar = (cs) => {
+      const pendientes = cs.filter((c) => c.deshacible);
+      poner(caja, h('div.cambios-cab', icono('brain', 15), h('b', `El cerebro hizo ${cs.length} ${cs.length === 1 ? 'cambio' : 'cambios'}`), mid && pendientes.length > 1 ? h('button.btn.ghost.small', { onclick: () => deshacer(null) }, icono('refresh'), 'Deshacer todo') : null),
+        h('ul', cs.map((c) => h('li' + (c.deshecho ? '.hecho' : ''), h('span.k', c.tipo.replace('_', ' ')), h('span.t', c.resumen), c.deshecho ? h('span.tag', 'deshecho') : mid && c.deshacible ? h('button.btn.ghost.small', { onclick: () => deshacer([c.i]) }, 'Deshacer') : null))));
+    };
+    async function deshacer(indices) {
+      try {
+        const r = await A.post(`chats/${encodeURIComponent(chatId)}/messages/${mid}/undo`, indices ? { indices } : {});
+        pintar(r.cambios); invalidarGrafo(); recargarMeta();
+        aviso(r.deshechos.length ? `Deshecho${r.deshechos.length > 1 ? ` (${r.deshechos.length} cambios)` : ''}.` : `No se pudo deshacer: ${r.saltados.map((x) => x.motivo).join('; ')}`, r.deshechos.length ? 'good' : 'bad', 5000);
+      } catch (e) { fallo(e); }
+    }
+    pintar(lista); return caja;
+  }
+
   function pintarMensaje(m, esUltima = false) {
     if (m.role === 'user') {
       const esBrief = !!m.meta?.brief;
@@ -200,7 +216,7 @@ export async function montar(el, { param }) {
     const infoLeida = { leidas: meta2.leidas || [], fijas: meta2.fijas || [], modo: meta2.modo, significado: undefined, omitidas: meta2.omitidas };
     return h('div.msg.bot', { 'data-id': m.id },
       h('div.who', h('span.orb'), h('b', { style: { color: 'var(--text-2)', fontWeight: 600 } }, brain?.name || 'Cerebro'), h('span', meta2.nombreModelo || ''), meta2.entrena ? h('span.tag.warn', 'entrena') : null, meta2.modo?.nombre ? h('span.tag.accent', meta2.modo.nombre) : null, meta2.editada ? h('span.tag.good', 'corregida por ti') : null),
-      meta2.leidas ? cajaLeida(infoLeida) : null, bloquesDeLetra(m.content, m),
+      meta2.leidas ? cajaLeida(infoLeida) : null, meta2.cambios?.length ? tarjetaCambios(meta2.cambios, m.id) : null, m.content === '(cambios en el cerebro)' && meta2.cambios?.length ? null : bloquesDeLetra(m.content, m),
       avisoDeCorte(meta2, esUltima),
       h('div.msg-foot', meta2.usd != null ? h('span', usd(meta2.usd)) : null, meta2.uso?.output_tokens ? h('span', `${num(meta2.uso.input_tokens || 0)} → ${num(meta2.uso.output_tokens)} tokens`) : null,
         h('button.btn.ghost.small', { onclick: () => copiar(m.content) }, icono('copy'), 'Copiar todo')));
@@ -281,8 +297,8 @@ export async function montar(el, { param }) {
     if (!mensajes.length) vaciar(msgsInner);
     const burbuja = h('div.msg.user', h('div.bubble' + (brief ? '.brief' : ''), brief ? 'ENCARGO DE LETRA\n' + Object.entries(brief).filter(([k]) => k !== 'versiones' || brief.versiones > 1).map(([k, v]) => `${k}: ${v}`).join('\n') : texto));
     const orbe = h('span.orb.think'), cuerpo = h('div'), quien = h('div.who', orbe, h('b', { style: { color: 'var(--text-2)', fontWeight: 600 } }, brain?.name || 'Cerebro'), h('span', 'leyendo la memoria…'));
-    const leida = h('div'), pie = h('div.msg-foot');
-    const respuesta = h('div.msg.bot', quien, leida, cuerpo, pie);
+    const leida = h('div'), pie = h('div.msg-foot'), cambiosEl = h('div');
+    const respuesta = h('div.msg.bot', quien, leida, cambiosEl, cuerpo, pie);
     msgsInner.append(burbuja, respuesta); abajo();
     anunciar('El cerebro está leyendo y escribiendo…');
     ctrl = new AbortController(); enviarBtn.replaceChildren(icono('x')); enviarBtn.title = 'Detener'; enviarBtn.setAttribute('aria-label', 'Detener');
@@ -296,6 +312,7 @@ export async function montar(el, { param }) {
           poner(leida, cajaLeida(i)); for (const a of i.avisos || []) aviso(a, '', 6000); marcarMapa(i, true);
         },
         texto(t) { acumulado += t; orbe.classList.remove('think'); if (!pendiente) pendiente = requestAnimationFrame(pintarCuerpo); },
+        cambios(d) { poner(cambiosEl, d.cambios?.length ? tarjetaCambios(d.cambios, null) : null); abajo(); },
         hecho(d) { hecho = d; },
         error(m) { fallido = m; },
       }, { senal: ctrl.signal });
@@ -316,6 +333,7 @@ export async function montar(el, { param }) {
     else if (interrumpido || sinFinal) aviso('Se interrumpió la conexión con el servidor. Lo que llegó quedó guardado; si falta, pulsa «Continuar».', 'bad', 9000);
     else anunciar('La respuesta está lista.');
     ctrl = null; reponerBoton();
+    if (hecho?.cambios?.length) { invalidarGrafo(); recargarMeta(); }
     bus.dispatchEvent(new Event('gasto'));
     try { await abrirChat(id); await cargarChats(); } catch { /* ya está en pantalla lo esencial */ }
     // el cerebro dudó del modo: en vez de adivinar, ofrece los modos para elegir con un toque (y reenvía el mismo encargo con ese modo)
