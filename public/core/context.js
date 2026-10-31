@@ -18,7 +18,8 @@ export const esGenerada = (texto) => leerCabecera(texto).fm.origen === 'generada
 
 export const PROFUNDIDAD = { ligera: 14_000, normal: 30_000, profunda: 60_000 };
 const MAX_FIJA = 8_000, MAX_COMPLETA = 3_200, MAX_RESUMEN = 360;
-const ORDEN_MOTIVO = { modo: 0, anclada: 1, busqueda: 2, vecina: 3 };
+const ORDEN_MOTIVO = { modo: 0, ejemplo: 0.5, anclada: 1, busqueda: 2, vecina: 3 };
+export const MAX_EJEMPLO = 7_000;   // letras de ejemplo: completas (con tope), fuera del presupuesto de lo recuperado
 
 /**
  * notas: Map nombre → { nombre, carpeta, texto, siempre, privado }
@@ -27,7 +28,7 @@ const ORDEN_MOTIVO = { modo: 0, anclada: 1, busqueda: 2, vecina: 3 };
  * pesos: Map nombre → peso aprendido (−0.2…+0.2)
  * → { fijas:[bloque], recuperadas:[bloque], omitidas:{ privadas, sinSitio }, chars }
  */
-export function planear({ notas, grafo, semillas = new Map(), anclas = [], modo = null, pasajes = new Map(), pesos = new Map(), presupuesto = PROFUNDIDAD.normal, entrena = false, adj = null }) {
+export function planear({ notas, grafo, semillas = new Map(), anclas = [], modo = null, ejemplos = [], pasajes = new Map(), pesos = new Map(), presupuesto = PROFUNDIDAD.normal, entrena = false, adj = null }) {
   const permitido = (n) => !(entrena && n.privado);
   const omitidas = { privadas: [], sinSitio: [], recortadas: [] };
   const bloque = (n, motivo, texto, energia = 0) => ({ nombre: n.nombre, carpeta: n.carpeta, motivo, texto, energia: +energia.toFixed(3) });
@@ -46,6 +47,12 @@ export function planear({ notas, grafo, semillas = new Map(), anclas = [], modo 
 
   // 2-5 · recuperadas
   const yaEstan = new Set(fijas.map((b) => b.nombre));
+  // ejemplos de su voz: canciones suyas COMPLETAS asociadas al modo elegido (las elige quien arma el contexto)
+  const bloquesEjemplo = [];
+  for (const nombre of ejemplos) {
+    const n = notas.get(nombre); if (!n || yaEstan.has(nombre) || !permitido(n)) continue;
+    bloquesEjemplo.push(bloque(n, 'ejemplo', recortar(leerCabecera(n.texto).cuerpo.trim(), MAX_EJEMPLO), 1)); yaEstan.add(nombre);
+  }
   const energia = new Map();
   const sumar = (nombre, e) => { if (notas.has(nombre)) energia.set(nombre, Math.max(energia.get(nombre) || 0, e)); };
   for (const m of modosSel) sumar(m, 1);
@@ -67,6 +74,7 @@ export function planear({ notas, grafo, semillas = new Map(), anclas = [], modo 
   for (const c of candidatas) {
     const n = notas.get(c.nombre);
     if (esGenerada(n.texto) && c.motivo !== 'anclada') continue;   // no es su voz: no entra como ejemplo
+    if (n.tipo === 'modo' && modosSel.length && !modosSel.includes(c.nombre) && c.motivo !== 'anclada') continue;   // los otros modos no se leen: mezclan estilos
     if (n.tipo === 'moc' && c.motivo !== 'anclada') continue; // un índice es un mapa, no contenido
     if (!permitido(n)) { omitidas.privadas.push(n.nombre); continue; }
     const cuerpo = leerCabecera(n.texto).cuerpo.trim();
@@ -80,6 +88,7 @@ export function planear({ notas, grafo, semillas = new Map(), anclas = [], modo 
     usado += costo;
     recuperadas.push(bloque(n, c.motivo, texto, c.e));
   }
+  recuperadas.push(...bloquesEjemplo);
   recuperadas.sort((a, b) => ORDEN_MOTIVO[a.motivo] - ORDEN_MOTIVO[b.motivo] || b.energia - a.energia);
   return { fijas, recuperadas, omitidas, chars: usado, charsFijas: fijas.reduce((s, b) => s + b.texto.length, 0) };
 }

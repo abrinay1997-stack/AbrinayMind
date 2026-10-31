@@ -215,3 +215,21 @@ test('contexto: una canción marcada «origen: generada» no entra como ejemplo 
   const anclada = planear({ notas, grafo, semillas, anclas: ['Hecha por el sistema'] });
   assert.ok(anclada.recuperadas.some((b) => b.nombre === 'Hecha por el sistema'), 'si el artista la ancla a mano, sí entra');
 });
+
+test('contexto: los ejemplos del modo van completos y aparte; los otros modos no se leen; un modelo que entrena no recibe ejemplos privados', async () => {
+  const { planear } = await import('../public/core/context.js');
+  const largo = 'verso inventado número uno\n'.repeat(400);   // ~10.800 letras: se recorta al tope del ejemplo
+  const n = (nombre, tipo, texto, extra = {}) => ({ nombre, carpeta: 'x', texto: `---\ntipo: ${tipo}\n---\n# ${nombre}\n\n${texto}`, siempre: false, privado: false, tipo, ...extra });
+  const notas = new Map([
+    ['Modo A', n('Modo A', 'modo', 'Estilo A.')], ['Modo B', n('Modo B', 'modo', 'Estilo B.')],
+    ['Canción A', n('Canción A', 'cancion', largo)], ['Canción privada', n('Canción privada', 'cancion', 'Inédita inventada.', { privado: true })],
+  ]);
+  const grafo = { nodes: [{ id: 'Modo A' }, { id: 'Modo B' }, { id: 'Canción A' }, { id: 'Canción privada' }], links: [[0, 2], [1, 0]], mentions: [], meaning: [], learned: [] };
+  const plan = planear({ notas, grafo, modo: ['Modo A'], ejemplos: ['Canción A', 'Canción privada'], entrena: false });
+  const ej = plan.recuperadas.filter((b) => b.motivo === 'ejemplo');
+  assert.deepEqual(ej.map((b) => b.nombre).sort(), ['Canción A', 'Canción privada']);
+  assert.ok(ej[0].texto.length <= 7100 && ej[0].texto.length > 6000, 'completa hasta el tope');
+  assert.ok(!plan.recuperadas.some((b) => b.nombre === 'Modo B'), 'el otro modo no entra');
+  const privado = planear({ notas, grafo, modo: ['Modo A'], ejemplos: ['Canción A', 'Canción privada'], entrena: true });
+  assert.ok(!privado.recuperadas.some((b) => b.nombre === 'Canción privada'), 'privado + modelo que entrena = no entra');
+});
