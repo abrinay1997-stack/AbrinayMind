@@ -364,3 +364,7 @@ kbd { font-family: var(--mono); font-size: .88em; background: var(--surface-3); 
 }
 @media (max-width: 900px), (pointer: coarse) { input[type=text], input[type=password], input[type=number], input[type=search], select { min-height: var(--hit); } .seg button { min-height: var(--hit); } }
 @media (max-height: 500px) { .seg button, .brand { min-height: 38px; } }
+
+/* ---------- copiar para Suno ---------- */
+textarea.suno-letra { font-family: var(--mono); font-size: 13.5px; line-height: 1.6; min-height: 220px; }
+@media (max-width: 900px) { textarea.suno-letra { font-size: 16px; } }

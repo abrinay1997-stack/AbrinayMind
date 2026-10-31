@@ -4,7 +4,7 @@ import { h, poner, vaciar, icono, aviso, fallo, dialogo, pedir, confirmar, copia
 import { S, api, bus, modelos, grafo, anclar, ir, irANota, recargarMeta } from '../store.js';
 import { flujo } from '../api.js';
 import { parsear, primeraLinea } from '../lyric.js';
-import { vistaDeLetra } from '../letra-ui.js';
+import { vistaDeLetra, abrirParaSuno, copiarTextoLimpio } from '../letra-ui.js';
 import { Graph3D } from '../graph3d.js';
 
 const RAPIDAS = [
@@ -129,7 +129,8 @@ export async function montar(el, { param }) {
   function bloquesDeLetra(texto, m, { enVivo = false } = {}) {
     return vistaDeLetra(texto, { ...opcionesMd, enVivo, pie: m?.id ? (v, p) => h('div.row.wrap', { style: { gap: '6px' } },
       h('button.btn.small', { onclick: () => guardarCancion(m, v, p.versiones.length > 1) }, icono('songs'), 'Guardar como canción'),
-      h('button.btn.ghost.small.solo-escritorio', { onclick: () => copiar(v.crudo) }, icono('copy'), 'Copiar'),
+      h('button.btn.small.solo-escritorio', { onclick: () => abrirParaSuno({ titulo: m.meta?.brief?.titulo, version: v, brief: m.meta?.brief }) }, icono('upload'), 'Para Suno'),
+      h('button.btn.ghost.small.solo-escritorio', { onclick: () => copiarTextoLimpio(v, m.meta?.brief?.titulo) }, icono('copy'), 'Copiar letra'),
       h('button.btn.ghost.small.solo-escritorio', { onclick: () => refinar(v) }, icono('edit'), 'Refinar'),
       h('button.btn.small.solo-movil', { 'aria-label': 'Más acciones de esta versión', 'aria-haspopup': 'dialog', onclick: () => menuVersion(m, v) }, icono('more'))) : null });
   }
@@ -137,7 +138,7 @@ export async function montar(el, { param }) {
   const refinar = (v) => { entrada.value = `Refina la ${v.etiqueta ? 'versión ' + v.etiqueta : 'letra'}: `; ajustarAlto(); entrada.focus(); };
   function menuVersion(m, v) {
     const fila = (ic, t, fn) => h('button.list-row', { style: { textAlign: 'left', width: '100%' }, onclick: () => { d.cerrar(); fn(); } }, icono(ic), h('div.grow', h('b', t)));
-    const d = dialogo({ titulo: v.etiqueta ? `Versión ${v.etiqueta}` : 'Esta letra', cuerpo: h('div.stack', { style: { gap: '8px' } }, fila('copy', 'Copiar esta versión', () => copiar(v.crudo)), fila('edit', 'Refinar esta versión', () => refinar(v)), fila('copy', 'Copiar todo el mensaje', () => copiar(m.content))) });
+    const d = dialogo({ titulo: v.etiqueta ? `Versión ${v.etiqueta}` : 'Esta letra', cuerpo: h('div.stack', { style: { gap: '8px' } }, fila('upload', 'Copiar para Suno', () => abrirParaSuno({ titulo: m.meta?.brief?.titulo, version: v, brief: m.meta?.brief })), fila('copy', 'Copiar la letra (texto limpio)', () => copiarTextoLimpio(v, m.meta?.brief?.titulo)), fila('edit', 'Refinar esta versión', () => refinar(v)), fila('copy', 'Copiar todo el mensaje (con notas técnicas)', () => copiar(m.content))) });
   }
   function menuChat() {
     const fila = (ic, t, fn, peligro) => h('button.list-row', { style: { textAlign: 'left', width: '100%', ...(peligro ? { color: 'var(--bad)' } : {}) }, onclick: () => { d.cerrar(); fn(); } }, icono(ic), h('div.grow', h('b', t)));
