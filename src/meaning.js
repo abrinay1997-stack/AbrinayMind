@@ -9,7 +9,8 @@ export const MODELO = '@cf/baai/bge-m3';
 export const disponible = (env) => !!(env.AI && typeof env.AI.run === 'function');
 
 const aBase64 = (u8) => { let s = ''; for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode(...u8.subarray(i, i + 0x8000)); return btoa(s); };
-const deBase64 = (b) => Uint8Array.from(atob(b), (c) => c.charCodeAt(0));
+// Un bucle simple: con Uint8Array.from(…, callback) cada consulta gastaba ~25 ms de CPU solo en decodificar los vectores (13 veces más lento).
+const deBase64 = (b) => { const s = atob(b), u = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) u[i] = s.charCodeAt(i); return u; };
 
 /** Un vector (números) → { scale, v } con enteros de 8 bits ya normalizados a longitud 1. */
 export function cuantizar(vec) {
@@ -56,9 +57,20 @@ export async function indexar(env, db, brain, { cuantas = 8 } = {}) {
   return { ok: true, hechas: pend.length, ...(await estado(env, db, brain.id)) };
 }
 
+// Los vectores ya decodificados se guardan en la memoria del isolate mientras no cambien (cuenta + fecha del último): leerlos y decodificarlos
+// de nuevo en cada mensaje era lo que más CPU gastaba. Si el isolate se recicla, simplemente se vuelven a leer.
+const CACHE = new Map();
 async function todosLosVectores(db, brainId) {
-  return (await todas(db, 'select name, scale, v from vectors where brain_id = ? and model = ?', brainId, MODELO)).map(decodificar);
+  const sello = await una(db, 'select count(*) n, coalesce(max(created), 0) m from vectors where brain_id = ? and model = ?', brainId, MODELO);
+  const clave = `${brainId}:${MODELO}`, ya = CACHE.get(clave);
+  if (ya && ya.n === sello.n && ya.m === sello.m) return [...ya.lista];
+  const lista = (await todas(db, 'select name, scale, v from vectors where brain_id = ? and model = ?', brainId, MODELO)).map(decodificar);
+  if (CACHE.size > 20) CACHE.clear();
+  CACHE.set(clave, { n: sello.n, m: sello.m, lista });
+  return [...lista];
 }
+/** Para las pruebas: olvida lo guardado en memoria. */
+export const vaciarCacheDeVectores = () => CACHE.clear();
 
 /** Dibuja las sinapsis de significado de un trozo de notas: sus `k` vecinas más cercanas por encima del umbral. */
 export async function vecinas(db, brain, { desde = 0, cuantas = 6, k = 4, umbral = 0.55 } = {}) {

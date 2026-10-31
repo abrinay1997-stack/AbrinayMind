@@ -4,7 +4,9 @@ import { h, poner, vaciar, icono, aviso, fallo, dialogo, pedir, confirmar, copia
 import { S, api, bus, modelos, grafo, anclar, ir, irANota, recargarMeta } from '../store.js';
 import { flujo } from '../api.js';
 import { parsear, primeraLinea } from '../lyric.js';
-import { vistaDeLetra } from '../letra-ui.js';
+import { vistaDeLetra, abrirParaSuno, copiarTextoLimpio } from '../letra-ui.js';
+import { ofrecerAprender } from '../aprender.js';
+import { textoLimpio } from '../formato.js';
 import { Graph3D } from '../graph3d.js';
 
 const RAPIDAS = [
@@ -129,15 +131,33 @@ export async function montar(el, { param }) {
   function bloquesDeLetra(texto, m, { enVivo = false } = {}) {
     return vistaDeLetra(texto, { ...opcionesMd, enVivo, pie: m?.id ? (v, p) => h('div.row.wrap', { style: { gap: '6px' } },
       h('button.btn.small', { onclick: () => guardarCancion(m, v, p.versiones.length > 1) }, icono('songs'), 'Guardar como canción'),
-      h('button.btn.ghost.small.solo-escritorio', { onclick: () => copiar(v.crudo) }, icono('copy'), 'Copiar'),
+      h('button.btn.small.solo-escritorio', { onclick: () => corregirVersion(m, v) }, icono('edit'), 'Corregir'),
+      h('button.btn.small.solo-escritorio', { onclick: () => abrirParaSuno({ titulo: m.meta?.brief?.titulo, version: v, brief: m.meta?.brief }) }, icono('upload'), 'Para Suno'),
+      h('button.btn.ghost.small.solo-escritorio', { onclick: () => copiarTextoLimpio(v, m.meta?.brief?.titulo) }, icono('copy'), 'Copiar letra'),
       h('button.btn.ghost.small.solo-escritorio', { onclick: () => refinar(v) }, icono('edit'), 'Refinar'),
       h('button.btn.small.solo-movil', { 'aria-label': 'Más acciones de esta versión', 'aria-haspopup': 'dialog', onclick: () => menuVersion(m, v) }, icono('more'))) : null });
   }
 
+  /** El artista corrige la letra ahí mismo: se guarda en la conversación (el siguiente turno parte de ESA letra) y se le ofrece enseñarle al cerebro lo que cambió. */
+  function corregirVersion(m, v) {
+    const area = h('textarea.corregir', { value: v.crudo, spellcheck: 'false', 'aria-label': 'Letra para corregir' });
+    dialogo({ titulo: 'Corregir la letra', sub: 'Cambia lo que quieras. Se guarda aquí mismo y el cerebro seguirá trabajando con tu versión. Después podrás enseñarle qué cambiaste.', ancho: true,
+      cuerpo: h('div.field', area, h('span.hint', 'Las secciones van entre corchetes: [VERSO 1], [CORO]… Lo que dejes bajo «Notas técnicas» no cuenta como letra.')),
+      acciones: [{ texto: 'Cancelar', tipo: 'ghost' }, { texto: 'Guardar corrección', tipo: 'primary', onclick: async () => {
+        const nuevo = area.value.trim();
+        if (!nuevo) { aviso('La letra no puede quedar vacía.', 'bad'); return false; }
+        if (nuevo === v.crudo.trim()) { aviso('No hay cambios que guardar.'); return false; }
+        const contenido = m.content.replace(v.crudo, () => nuevo);
+        await A.patch(`chats/${encodeURIComponent(chatId)}/messages/${m.id}`, { texto: contenido });
+        const antes = textoLimpio(v), despues = textoLimpio(parsear(nuevo).versiones[0]);
+        await abrirChat(chatId);
+        ofrecerAprender({ antes, despues, titulo: m.meta?.brief?.titulo || primeraLinea(v), modo: m.meta?.modo?.nota || '' });
+      } }] });
+  }
   const refinar = (v) => { entrada.value = `Refina la ${v.etiqueta ? 'versión ' + v.etiqueta : 'letra'}: `; ajustarAlto(); entrada.focus(); };
   function menuVersion(m, v) {
     const fila = (ic, t, fn) => h('button.list-row', { style: { textAlign: 'left', width: '100%' }, onclick: () => { d.cerrar(); fn(); } }, icono(ic), h('div.grow', h('b', t)));
-    const d = dialogo({ titulo: v.etiqueta ? `Versión ${v.etiqueta}` : 'Esta letra', cuerpo: h('div.stack', { style: { gap: '8px' } }, fila('copy', 'Copiar esta versión', () => copiar(v.crudo)), fila('edit', 'Refinar esta versión', () => refinar(v)), fila('copy', 'Copiar todo el mensaje', () => copiar(m.content))) });
+    const d = dialogo({ titulo: v.etiqueta ? `Versión ${v.etiqueta}` : 'Esta letra', cuerpo: h('div.stack', { style: { gap: '8px' } }, fila('edit', 'Corregir la letra', () => corregirVersion(m, v)), fila('upload', 'Copiar para Suno', () => abrirParaSuno({ titulo: m.meta?.brief?.titulo, version: v, brief: m.meta?.brief })), fila('copy', 'Copiar la letra (texto limpio)', () => copiarTextoLimpio(v, m.meta?.brief?.titulo)), fila('edit', 'Refinar esta versión', () => refinar(v)), fila('copy', 'Copiar todo el mensaje (con notas técnicas)', () => copiar(m.content))) });
   }
   function menuChat() {
     const fila = (ic, t, fn, peligro) => h('button.list-row', { style: { textAlign: 'left', width: '100%', ...(peligro ? { color: 'var(--bad)' } : {}) }, onclick: () => { d.cerrar(); fn(); } }, icono(ic), h('div.grow', h('b', t)));
@@ -149,20 +169,29 @@ export async function montar(el, { param }) {
     const chip = (n, motivo) => h('button.linkchip', { title: n, onclick: () => irANota(n) }, h('span', n), motivo ? h('span.why', MOTIVO[motivo] || motivo) : null);
     return h('details.readbox', h('summary', icono('brain', 15), `Leyó ${leidas.length} nota${leidas.length === 1 ? '' : 's'} + ${fijas.length} fijas${info.modo?.nombre ? ' · ' + info.modo.nombre : ''}${info.significado ? ' · con significado' : ''}`),
       h('div.linklist', fijas.map((n) => chip(n, 'siempre')), leidas.map((x) => chip(x.nombre, x.motivo))),
-      info.omitidas?.sinSitio?.length ? h('div.faint', { style: { padding: '0 12px 10px', fontSize: '12px' } }, `${info.omitidas.sinSitio.length} notas quedaron fuera por falta de espacio (sube la profundidad).`) : null);
+      info.omitidas?.sinSitio?.length ? h('div.faint', { style: { padding: '0 12px 10px', fontSize: '12px' } }, `${info.omitidas.sinSitio.length} notas quedaron fuera por falta de espacio (sube la profundidad).`) : null,
+      ...(info.omitidas?.recortadas || []).map((r) => h('div', { style: { padding: '0 12px 10px', fontSize: '12px', color: 'var(--warn)' }, role: 'note' }, `«${r.nombre}» es muy larga (${num(r.caracteres)} caracteres) y se leyó recortada por el medio. Conviene ordenarla o resumirla.`)));
   }
 
-  function pintarMensaje(m) {
+  const CONTINUAR = 'Continúa exactamente donde te quedaste, sin repetir nada de lo anterior.';
+  /** Aviso bajo una respuesta que no llegó entera, con el botón para continuarla (solo en la última). */
+  function avisoDeCorte(meta2, esUltima) {
+    const texto = meta2.error ? `Se cortó: ${meta2.error}` : meta2.parada === 'max_tokens' ? 'La respuesta llegó al límite de longitud y quedó cortada.' : meta2.incompleta ? 'La conexión se cortó antes de terminar la respuesta.' : meta2.interrumpida ? 'Detenida antes de terminar.' : '';
+    if (!texto) return null;
+    return h('div.corte', { role: 'note' }, h('span', texto), esUltima ? h('button.btn.small', { onclick: () => { if (!ctrl) enviar({ texto: CONTINUAR, fn: meta2.fn === 'letra' || meta2.fn === 'borrador' ? meta2.fn : 'chat' }); } }, icono('refresh'), 'Continuar') : null);
+  }
+
+  function pintarMensaje(m, esUltima = false) {
     if (m.role === 'user') {
       const esBrief = !!m.meta?.brief;
       return h('div.msg.user', h('div.bubble' + (esBrief ? '.brief' : ''), esBrief ? m.content : m.content));
     }
     const meta2 = m.meta || {};
-    const infoLeida = { leidas: meta2.leidas || [], fijas: meta2.fijas || [], modo: meta2.modo, significado: undefined };
+    const infoLeida = { leidas: meta2.leidas || [], fijas: meta2.fijas || [], modo: meta2.modo, significado: undefined, omitidas: meta2.omitidas };
     return h('div.msg.bot', { 'data-id': m.id },
-      h('div.who', h('span.orb'), h('b', { style: { color: 'var(--text-2)', fontWeight: 600 } }, brain?.name || 'Cerebro'), h('span', meta2.nombreModelo || ''), meta2.entrena ? h('span.tag.warn', 'entrena') : null, meta2.modo?.nombre ? h('span.tag.accent', meta2.modo.nombre) : null),
+      h('div.who', h('span.orb'), h('b', { style: { color: 'var(--text-2)', fontWeight: 600 } }, brain?.name || 'Cerebro'), h('span', meta2.nombreModelo || ''), meta2.entrena ? h('span.tag.warn', 'entrena') : null, meta2.modo?.nombre ? h('span.tag.accent', meta2.modo.nombre) : null, meta2.editada ? h('span.tag.good', 'corregida por ti') : null),
       meta2.leidas ? cajaLeida(infoLeida) : null, bloquesDeLetra(m.content, m),
-      meta2.error ? h('div.faint', { style: { color: 'var(--bad)' } }, `Se cortó: ${meta2.error}`) : meta2.interrumpida ? h('div.faint', 'Detenida antes de terminar.') : null,
+      avisoDeCorte(meta2, esUltima),
       h('div.msg-foot', meta2.usd != null ? h('span', usd(meta2.usd)) : null, meta2.uso?.output_tokens ? h('span', `${num(meta2.uso.input_tokens || 0)} → ${num(meta2.uso.output_tokens)} tokens`) : null,
         h('button.btn.ghost.small', { onclick: () => copiar(m.content) }, icono('copy'), 'Copiar todo')));
   }
@@ -177,7 +206,7 @@ export async function montar(el, { param }) {
         mods && mods.proveedores.every((p) => !p.configurada) ? h('div.aviso-llave', { role: 'note' }, icono('warn', 18), h('div', h('b', 'Falta la llave de un modelo'), h('span', 'El cerebro puede leer tus notas, pero no escribir hasta que añadas ANTHROPIC_API_KEY o META_API_KEY en Cloudflare.')), h('button.btn.small', { onclick: () => ir('ajustes') }, 'Ver Ajustes')) : null));
       return;
     }
-    for (const m of mensajes) msgsInner.append(pintarMensaje(m));
+    mensajes.forEach((m, i) => msgsInner.append(pintarMensaje(m, i === mensajes.length - 1)));
     abajo();
   }
 
@@ -247,7 +276,7 @@ export async function montar(el, { param }) {
     msgsInner.append(burbuja, respuesta); abajo();
     anunciar('El cerebro está leyendo y escribiendo…');
     ctrl = new AbortController(); enviarBtn.replaceChildren(icono('x')); enviarBtn.title = 'Detener'; enviarBtn.setAttribute('aria-label', 'Detener');
-    let acumulado = '', info = null, hecho = null, fallido = null, pendiente = 0;
+    let acumulado = '', info = null, hecho = null, fallido = null, pendiente = 0, interrumpido = false;
     const pintarCuerpo = () => { pendiente = 0; const pegado = cercaDelFinal(); poner(cuerpo, acumulado ? bloquesDeLetra(acumulado, null, { enVivo: true }) : null); if (pegado) abajo(); };
     const cuerpoPeticion = { fn, anclas: [...S.anclas], modo: f.modo || null, ...(f.modelo ? { model: f.modelo } : {}), ...(f.profundidad ? { profundidad: f.profundidad } : {}), ...(brief ? { brief } : { texto }) };
     try {
@@ -261,7 +290,9 @@ export async function montar(el, { param }) {
         error(m) { fallido = m; },
       }, { senal: ctrl.signal });
     } catch (e) {
-      if (e.name !== 'AbortError') {
+      if (e.name !== 'AbortError' && (info || acumulado)) {
+        interrumpido = true;   // la conexión se cayó a mitad (pantalla apagada, cambio de red): lo recibido NO se borra
+      } else if (e.name !== 'AbortError') {
         // el servidor rechazó antes de empezar: nada quedó guardado
         burbuja.remove(); respuesta.remove(); fallo(e); ctrl = null; reponerBoton();
         if (e.codigo === 'sin_llave' || e.codigo === 'entrena' || e.codigo === 'tope') aviso('Ve a Ajustes para resolverlo.', '', 5000);
@@ -270,7 +301,10 @@ export async function montar(el, { param }) {
       }
     }
     cancelAnimationFrame(pendiente); orbe.classList.remove('think'); pintarCuerpo();
-    if (fallido) fallo(new Error(fallido)); else anunciar('La respuesta está lista.');
+    const sinFinal = !hecho && !fallido && !ctrl.signal.aborted;   // el flujo terminó sin avisar de que acabó: se cayó
+    if (fallido) fallo(new Error(fallido));
+    else if (interrumpido || sinFinal) aviso('Se interrumpió la conexión con el servidor. Lo que llegó quedó guardado; si falta, pulsa «Continuar».', 'bad', 9000);
+    else anunciar('La respuesta está lista.');
     ctrl = null; reponerBoton();
     bus.dispatchEvent(new Event('gasto'));
     try { await abrirChat(id); await cargarChats(); } catch { /* ya está en pantalla lo esencial */ }

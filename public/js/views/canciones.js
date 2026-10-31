@@ -2,7 +2,9 @@
 import { h, poner, vaciar, icono, aviso, fallo, dialogo, pedir, confirmar, copiar, num, fecha, esMovil, esqueleto } from '../ui.js';
 import { S, api, ir, irANota, invalidarGrafo, recargarMeta } from '../store.js';
 import { parsear } from '../lyric.js';
-import { vistaDeLetra, mdEl } from '../letra-ui.js';
+import { vistaDeLetra, mdEl, abrirParaSuno, copiarTextoLimpio } from '../letra-ui.js';
+import { ofrecerAprender } from '../aprender.js';
+import { textoLimpio } from '../formato.js';
 
 const ESTADO = { borrador: ['Borrador', ''], aprobada: ['Aprobada', 'good'], rechazada: ['Rechazada', 'bad'] };
 const DIAGNOSTICO = [
@@ -53,7 +55,8 @@ export async function montar(el, { param }) {
       c.note_name ? h('button.btn.small', { style: { alignSelf: 'flex-start' }, onclick: () => { d.cerrar(); irANota(c.note_name); } }, icono('notes'), c.status === 'aprobada' ? 'Ver la nota en el cerebro' : 'Ver la lección en el cerebro') : null);
     const d = dialogo({ titulo: c.title, ancho: true, cuerpo, alCerrar: () => history.replaceState(null, '', `#/${encodeURIComponent(slug)}/canciones`), acciones: [
       { texto: 'Borrar', tipo: 'ghost', onclick: async () => { if (!(await confirmar({ titulo: 'Borrar canción', texto: `«${c.title}» se elimina de la biblioteca. La nota del cerebro, si existe, se queda.`, ok: 'Borrar', peligro: true }))) return false; await A.del(`songs/${encodeURIComponent(c.id)}`); await cargar(); recargarMeta(); aviso('Canción borrada.'); } },
-      { texto: 'Copiar', tipo: 'ghost', onclick: () => { copiar(c.text); return false; } },
+      ...(parsear(c.text).esLetra ? [{ texto: 'Para Suno', onclick: () => { const v = parsear(c.text).versiones[0]; abrirParaSuno({ titulo: c.title, version: v, brief: { genero: c.genre, bpm: c.bpm } }); return false; } },
+        { texto: 'Copiar letra', tipo: 'ghost', onclick: () => { copiarTextoLimpio(parsear(c.text).versiones[0], c.title); return false; } }] : [{ texto: 'Copiar', tipo: 'ghost', onclick: () => { copiar(c.text); return false; } }]),
       { texto: 'Editar', onclick: async () => { d.cerrar(); await editar(c); return false; } },
       ...(c.status === 'borrador' ? [{ texto: 'Rechazar', tipo: 'danger', onclick: async () => { d.cerrar(); await rechazar(c); return false; } }, { texto: 'Aprobar', tipo: 'primary', onclick: async () => { d.cerrar(); await aprobar(c); return false; } }]
         : [{ texto: 'Cambiar veredicto', onclick: async () => { d.cerrar(); await (c.status === 'aprobada' ? rechazar(c) : aprobar(c)); return false; } }, { texto: 'Cerrar', tipo: 'primary' }]),
@@ -64,7 +67,7 @@ export async function montar(el, { param }) {
     const t = h('input', { type: 'text', value: c.title }), x = h('textarea', { rows: 18, value: c.text, style: { fontFamily: 'var(--mono)', fontSize: '13.5px', lineHeight: 1.6 } });
     const d = dialogo({ titulo: 'Editar canción', ancho: true, cuerpo: h('div.stack', h('div.field', h('label', 'Título'), t), h('div.field', h('label', 'Letra'), x, h('span.hint', 'Secciones entre corchetes: [VERSO 1], [CORO]… y «## Notas técnicas» al final.'))), acciones: [
       { texto: 'Cancelar', tipo: 'ghost', onclick: () => { abrir(c.id); } },
-      { texto: 'Guardar cambios', tipo: 'primary', onclick: async () => { await A.patch(`songs/${encodeURIComponent(c.id)}`, { titulo: t.value, texto: x.value }); await cargar(); aviso('Guardada.', 'good', 1600); abrir(c.id); } }] });
+      { texto: 'Guardar cambios', tipo: 'primary', onclick: async () => { await A.patch(`songs/${encodeURIComponent(c.id)}`, { titulo: t.value, texto: x.value }); await cargar(); aviso('Guardada.', 'good', 1600); abrir(c.id); ofrecerAprender({ antes: textoLimpio(parsear(c.text).versiones[0]), despues: textoLimpio(parsear(x.value).versiones[0]), titulo: t.value, modo: c.mode || '' }); } }] });
     return d;
   }
 

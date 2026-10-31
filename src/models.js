@@ -127,24 +127,53 @@ export function armarLlamada(env, modelo, { sistema, mensajes, maxTokens = 4096,
   return { url: baseDe(env, p) + p.ruta, cabeceras: cab, cuerpo };
 }
 
+const REINTENTABLES = new Set([408, 425, 429, 500, 502, 503, 504, 529]);
+export const ESPERAS = [800, 2500];                   // ms antes del 2.º y del 3.er intento
+export const TIEMPOS = { primerByte: 30_000 };        // ms hasta que el proveedor empieza a contestar
+const dormir = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * La petición al proveedor con reintentos: un error de red, un tiempo agotado o un 429/5xx/529 («saturado») se reintentan hasta 2 veces con espera creciente
+ * (respetando `retry-after` hasta 5 s). Solo se reintenta ANTES de recibir una respuesta válida: nunca se repite un texto ya empezado.
+ * → la Response ok del proveedor, o lanza HttpError con un mensaje en español.
+ */
+async function pedirConReintentos(modelo, r, { fetchFn, senal, esperas = ESPERAS, tiempos = TIEMPOS }) {
+  let ultimo = null;
+  for (let intento = 0; intento <= esperas.length; intento++) {
+    const ctl = new AbortController(), aborto = () => ctl.abort();
+    senal?.addEventListener?.('abort', aborto, { once: true });
+    const reloj = setTimeout(aborto, tiempos.primerByte ?? TIEMPOS.primerByte);
+    let espera = esperas[intento] ?? 0;
+    try {
+      const res = await fetchFn(r.url, { method: 'POST', headers: r.cabeceras, body: JSON.stringify(r.cuerpo), signal: ctl.signal });
+      clearTimeout(reloj);
+      if (res.ok) return res;
+      const datos = await res.json().catch(() => null);
+      ultimo = new HttpError(res.status === 429 ? 429 : 502, errorDeApi(res.status, datos, modelo));
+      if (!REINTENTABLES.has(res.status)) throw ultimo;
+      const ra = Number(res.headers?.get?.('retry-after')); if (ra > 0) espera = Math.min(5000, Math.max(espera, ra * 1000));
+    } catch (e) {
+      clearTimeout(reloj);
+      if (e === ultimo && ultimo) throw e;
+      if (senal?.aborted) throw new HttpError(499, 'Se detuvo la petición.');
+      ultimo = new HttpError(502, ctl.signal.aborted ? `${modelo.nombre} tardó demasiado en empezar a contestar.` : `No se pudo llamar a ${modelo.nombre}: ${recortar(e?.message, 100)}`);
+    } finally { senal?.removeEventListener?.('abort', aborto); }
+    if (intento < esperas.length) await dormir(espera); else throw ultimo;
+  }
+  throw ultimo;
+}
+
 /** Una llamada completa (sin streaming). → { texto, uso, modelo, parada } */
-export async function llamar(env, modelo, args, { fetchFn = fetch, senal } = {}) {
+export async function llamar(env, modelo, args, { fetchFn = fetch, senal, esperas, tiempos } = {}) {
   const r = armarLlamada(env, modelo, { ...args, stream: false });
-  let res;
-  try { res = await fetchFn(r.url, { method: 'POST', headers: r.cabeceras, body: JSON.stringify(r.cuerpo), signal: senal }); }
-  catch (e) { throw new HttpError(502, `No se pudo llamar a ${modelo.nombre}: ${recortar(e?.message, 100)}`); }
+  const res = await pedirConReintentos(modelo, r, { fetchFn, senal, esperas, tiempos });
   const datos = await res.json().catch(() => null);
-  if (!res.ok) throw new HttpError(res.status === 429 ? 429 : 502, errorDeApi(res.status, datos, modelo));
   const texto = (Array.isArray(datos?.content) ? datos.content : []).filter((b) => b.type === 'text').map((b) => b.text).join('\n').trim();
   return { texto, uso: datos?.usage || {}, modelo: datos?.model || modelo.id, parada: datos?.stop_reason || 'end_turn' };
 }
 
 /** Una llamada con streaming (solo Anthropic). Devuelve la Response del proveedor para reenviarla tal cual. */
-export async function llamarEnFlujo(env, modelo, args, { fetchFn = fetch, senal } = {}) {
+export async function llamarEnFlujo(env, modelo, args, { fetchFn = fetch, senal, esperas, tiempos } = {}) {
   const r = armarLlamada(env, modelo, { ...args, stream: true });
-  let res;
-  try { res = await fetchFn(r.url, { method: 'POST', headers: r.cabeceras, body: JSON.stringify(r.cuerpo), signal: senal }); }
-  catch (e) { throw new HttpError(502, `No se pudo llamar a ${modelo.nombre}: ${recortar(e?.message, 100)}`); }
-  if (!res.ok) { const datos = await res.json().catch(() => null); throw new HttpError(res.status === 429 ? 429 : 502, errorDeApi(res.status, datos, modelo)); }
-  return res;
+  return pedirConReintentos(modelo, r, { fetchFn, senal, esperas, tiempos });
 }

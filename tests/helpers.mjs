@@ -59,14 +59,14 @@ export function proveedorFalso({ respuesta = 'Respuesta de prueba.', uso = { inp
 }
 
 /** Un entorno de prueba con su cliente HTTP (cookie incluida). */
-export async function entorno({ extra = {}, proveedor = proveedorFalso(), conAI = false, entrar = true } = {}) {
+export async function entorno({ extra = {}, proveedor = proveedorFalso(), conAI = false, entrar = true, tiempos } = {}) {
   const db = crearD1(), pendientes = [];
   const env = { DB: db, APP_PASSWORD: 'clave-de-prueba', SESSION_SECRET: 'secreto-de-sesion-de-prueba-123456', ANTHROPIC_API_KEY: 'sk-ant-prueba', ...(conAI ? { AI: aiFalsa() } : {}), ...extra };
   const ec = { waitUntil: (p) => pendientes.push(p) };
   let galleta = '';
   const api = async (metodo, ruta, cuerpo, { cabeceras = {}, sinX = false } = {}) => {
     const init = { method: metodo, headers: { ...(sinX ? {} : { 'x-am': '1' }), ...(galleta ? { cookie: galleta } : {}), ...(cuerpo !== undefined ? { 'content-type': 'application/json' } : {}), ...cabeceras }, body: cuerpo !== undefined ? JSON.stringify(cuerpo) : undefined };
-    const res = await handle(new Request('https://abrinay.test' + ruta, init), env, ec, { fetchFn: proveedor });
+    const res = await handle(new Request('https://abrinay.test' + ruta, init), env, ec, { fetchFn: proveedor, esperas: [0, 0], tiempos });
     const sc = res.headers.get('set-cookie'); if (sc) galleta = sc.split(';')[0].endsWith('=') ? '' : sc.split(';')[0];
     return res;
   };
