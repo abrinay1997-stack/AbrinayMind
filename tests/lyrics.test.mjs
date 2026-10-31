@@ -41,7 +41,10 @@ test('constructor: arma el contexto (siempre + modo + búsqueda + vecinas), llam
   assert.match(llamada.url, /api\.anthropic\.com\/v1\/messages$/); assert.equal(llamada.cabeceras['x-api-key'], 'sk-ant-prueba'); assert.equal(llamada.cuerpo.stream, true);
   assert.equal(llamada.cuerpo.system[0].cache_control.type, 'ephemeral', 'la parte fija va con caché de prompt');
   assert.match(llamada.cuerpo.system[0].text, /<memoria_fija>/); assert.match(llamada.cuerpo.system[0].text, /Cerrar sin resolver/); assert.match(llamada.cuerpo.system[0].text, /semilla\) nunca explicar de más/);
-  assert.match(llamada.cuerpo.system[1].text, /<recuperado>[\s\S]*<nota nombre="Niebla"/);
+  assert.match(llamada.cuerpo.system[1].text, /<ejemplos_de_su_voz>[\s\S]*<nota nombre="Niebla"[\s\S]*<\/ejemplos_de_su_voz>/, 'la canción del modo va completa como ejemplo de su voz');
+  assert.doesNotMatch(llamada.cuerpo.system[1].text, /<recuperado>[\s\S]*<nota nombre="Niebla"/, 'y no se repite en lo recuperado');
+  assert.doesNotMatch(llamada.cuerpo.system[1].text, /<nota nombre="Modo 2 — Batalla"/, 'los otros modos no se leen');
+  assert.ok(r.contexto.leidas.some((x) => x.nombre === 'Niebla' && x.motivo === 'ejemplo'));
   assert.doesNotMatch(llamada.cuerpo.system[0].text, /Marea/, 'lo recuperado no va en la parte con caché');
   const u = llamada.cuerpo.messages.at(-1); assert.equal(u.role, 'user'); assert.match(u.content, /ENCARGO DE LETRA[\s\S]*Introspectivo-Psicológico[\s\S]*NO TOCAR[\s\S]*la estación/);
   // costo: 1000 de entrada y 200 de salida con Sonnet (2 y 10 US$/M)

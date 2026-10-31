@@ -64,3 +64,26 @@ Se rediseñó la interfaz con prioridad móvil en 8 fases: tokens y contraste, a
 - VoiceOver/TalkBack y el teclado virtual de Android; en iPhone se comprobó a mano tras el despliegue (Estudio y Cerebro cargan y responden).
 - Lighthouse de rendimiento y las cabeceras de caché (`/fonts/*`, `/icons/*`) sobre el despliegue real.
 - Los registros de Cloudflare para confirmar la causa del error 500 (la comprobación fue funcional: dejó de fallar).
+
+---
+
+# Segunda tanda (31 oct 2026): fiabilidad del chat, calidad de las letras y datos del artista
+
+Qué pasó después del rediseño y cómo se resolvió. Sin datos del artista: solo lo que se aprendió.
+
+| Problema | Causa | Solución |
+|---|---|---|
+| Una respuesta se cortó en **exactamente 4.096 tokens** y el ajuste «Pensamiento» nunca funcionó | `thinking: { type: 'enabled', budget_tokens }` está **rechazado con 400** en los Claude 5 (Sonnet 5.5, Opus 5.5, Fable 5.x, Haiku 5.5). El respaldo reintentaba sin `thinking` y con `max_tokens` recortado, y escondía el error | Ya no se manda `thinking`: la profundidad va con `output_config.effort`; el tope de salida sube a 12.000 (los tokens de razonamiento cuentan dentro de `max_tokens`); si un modelo rechazara `effort`, se contesta igual sin él (PR 24) |
+| Mensajes del artista **sin respuesta** tras recargar | En el turno con herramientas, si el modelo solo leía notas o fallaba sin escribir texto, no se guardaba ninguna respuesta | Siempre queda una respuesta guardada (con el error o el aviso); en la última vuelta se obliga a contestar en texto (`tool_choice: none`); estado visible con segundos (PR 23) |
+| El cerebro leía como «ejemplo de su estilo» canciones **escritas por el sistema** | Nada distinguía lo que escribió el artista de lo que generó el sistema y se aprobó | Marca `origen: generada` (también al aprobar letras nuevas); esas notas no entran como ejemplo salvo que el artista las ancle (PR 26) |
+| A los encargos no les llegaba **ninguna canción completa** del artista | Entraban como resúmenes de 360 letras por vecindad del grafo, y los 4 modos se leían siempre | Al elegir modo entran completas (≤ 7.000 letras) las canciones del artista de ESE modo, fuera del presupuesto; los otros modos no se leen (PR 27) |
+| Nada comprobaba la letra | El modelo declaraba rima y recursos en «Notas técnicas» sin verificación; un modelo de lenguaje cuenta mal las sílabas | `public/core/prosodia.js` (sílabas, acento, sinalefa, rima consonante/asonante/multisílaba, anáforas) + herramienta `analizar_letra` de solo lectura al escribir + tarjeta «Revisión» por versión |
+| El análisis **se caía** con una palabra sin vocales («hmm») | Solo apareció al probar con letras reales, no con las de ejemplo | Guarda en `rimaDe` y prueba de robustez |
+
+## Reglas que salen de esto
+
+6. **Leer la guía del modelo antes de usar un parámetro nuevo.** Los modelos recientes quitan o cambian parámetros (`budget_tokens`, `temperature`, forzar herramientas): un 400 silenciado por un respaldo se convierte en una función que nunca funcionó.
+7. **Un respaldo que oculta un fallo debe dejar rastro.** Si se reintenta sin una opción, hay que poder ver que pasó (pendiente: un panel de últimos turnos con tiempos, tokens y parada).
+8. **Todo turno termina con algo guardado.** Aunque no haya texto, queda una respuesta con el motivo; si no, el artista ve su mensaje solo y no sabe qué pasó.
+9. **Distinguir quién escribió qué.** Lo que genera un sistema no es evidencia de la voz del artista. Cualquier mecanismo que «aprende de lo aprobado» necesita saber el origen.
+10. **Probar con los datos reales (en local, fuera de Git) además de con los de ejemplo.** Los fallos de la prosodia y de la selección de ejemplos solo aparecieron con material verdadero.

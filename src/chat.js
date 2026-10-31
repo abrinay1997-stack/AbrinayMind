@@ -8,7 +8,7 @@ import { leerAjustes, elegirModelo, llamarEnFlujo, llamar, PROVEEDORES, costo, e
 import * as uso from './usage.js';
 import { aprenderPalabras } from './aprender-modos.js';
 import { HERRAMIENTAS, crearEjecutor, cambiosPublicos } from './herramientas.js';
-import { armarContexto, resolverModo, nombresDeModos, modosDelCerebro, sistemaFijo, sistemaVariable, encargoTexto, consultaDeEncargo } from './context.js';
+import { armarContexto, resolverModo, nombresDeModos, modosDelCerebro, sistemaFijo, sistemaEstable, sistemaVolatil, encargoTexto, consultaDeEncargo } from './context.js';
 
 const enc = new TextEncoder();
 const sse = (evento, datos) => enc.encode(`event: ${evento}\ndata: ${JSON.stringify(datos)}\n\n`);
@@ -23,6 +23,16 @@ export function tokensDe(fn, brief) {
   if (fn === 'critica') return 4000;
   const v = Math.min(3, Math.max(1, Number(brief?.versiones) || 1));
   return 12_000 + (v - 1) * 6000;
+}
+
+/**
+ * El historial que se reenvía: las letras largas de turnos ANTERIORES se recortan (encarecen cada turno y empujan al modelo a copiar borradores viejos).
+ * Se conservan íntegros los 2 últimos mensajes del cerebro y los 2 últimos del artista (ahí está lo que se está trabajando).
+ */
+export function compactarHistorial(msgs, { conservar = 2, max = 1500, cabeza = 500 } = {}) {
+  const intactos = new Set();
+  for (const rol of ['assistant', 'user']) { let n = 0; for (let i = msgs.length - 1; i >= 0 && n < conservar; i--) if (msgs[i].role === rol) { intactos.add(i); n++; } }
+  return msgs.map((m, i) => (intactos.has(i) || String(m.content).length <= max ? m : { ...m, content: `${String(m.content).slice(0, cabeza).replace(/\s+\S*$/, '')}\n[…recortado: era un mensaje largo de un turno anterior (${String(m.content).length} letras); se conserva el principio…]` }));
 }
 
 /* ---------- conversaciones ---------- */
@@ -65,9 +75,12 @@ const VERBOS = { buscar_notas: 'Buscando en el cerebro', leer_nota: 'Leyendo', l
 export const pasoDe = (nombre, entrada) => { const x = entrada?.nombre || entrada?.origen || entrada?.consulta || ''; return `${VERBOS[nombre] || 'Trabajando'}${x ? ` «${recortar(String(x), 40)}»` : ''}…`; };
 
 
+/** ¿Parece una letra (secciones entre corchetes o varias líneas cortas)? */
+export const pareceLetra = (t) => /^\s*\[[^\]]{2,30}\]\s*$/m.test(String(t || '')) || String(t || '').split('\n').filter((l) => l.trim() && l.length < 90).length >= 8;
+
 /** Suma lo que dejó cada respuesta del modelo en un turno con herramientas (texto, uso, cómo terminó). `con(actual)` = lo acumulado + la respuesta en curso. */
 export function acumulador() {
-  const a = { texto: '', uso: {}, parada: null, fin: false, tope: false };
+  const a = { texto: '', borrador: '', uso: {}, parada: null, fin: false, tope: false };
   const juntar = (x, y) => (x && y ? x + '\n\n' + y : x || y);
   const sumarUso = (base, extra) => { const o = { ...base }; for (const [k, v] of Object.entries(extra || {})) o[k] = typeof v === 'number' ? (o[k] || 0) + v : v; return o; };
   a.sumar = (e) => { a.texto = juntar(a.texto, e.texto.trim() ? e.texto : ''); a.uso = sumarUso(a.uso, e.uso); a.parada = e.parada; a.fin = e.fin; };
@@ -142,7 +155,10 @@ export async function mensaje(env, ctx, db, brain, chatId, datos, { fetchFn = fe
   const { modelo, de, avisos } = elegirModelo(env, ajustes, { fn, pedido: datos.model || null });
   await uso.vigilarTope(db, ajustes);
   // el chat libre es un canal en los dos sentidos: con modelos Claude (que no entrenan) puede leer Y modificar el cerebro con herramientas
-  const conHerramientas = fn === 'chat' && ajustes.escritura_ia !== false && modelo.proveedor === 'anthropic' && !modelo.entrena;
+  // al escribir una letra solo tiene herramientas de LECTURA (consultar notas y analizar su borrador): nunca modifica el cerebro mientras escribe
+  const puedeHerramientas = modelo.proveedor === 'anthropic' && !modelo.entrena;
+  const modoHerramientas = !puedeHerramientas ? false : fn === 'chat' && ajustes.escritura_ia !== false ? 'todas' : fn === 'letra' ? 'lectura' : false;
+  const conHerramientas = !!modoHerramientas;
 
 
   // el historial reciente (de él sale también el modo que ya traía la conversación)
@@ -168,9 +184,11 @@ export async function mensaje(env, ctx, db, brain, chatId, datos, { fetchFn = fe
 
   const contexto = await armarContexto(env, db, brain, { consulta, modo: res.modos.map((m) => m.nota), anclas, previas, profundidad, entrena: !!modelo.entrena });
   const modoTexto = res.modos.length ? (res.origen === 'detectado' ? `detectado: ${res.motivo}` : res.origen === 'continua' ? 'sigue el de la conversación' : 'elegido por el artista') : '';
-  const sistema = [{ text: sistemaFijo(brain, contexto.plan.fijas, { herramientas: conHerramientas }), cache: true }, { text: sistemaVariable({ modos, modosSel: res.modos, libre: res.origen === 'libre', conversacion: res.origen === 'conversacion', modoTexto, recuperadas: contexto.plan.recuperadas }) }];
+  const estable = sistemaEstable({ modos, modosSel: res.modos, libre: res.origen === 'libre', conversacion: res.origen === 'conversacion', modoTexto, recuperadas: contexto.plan.recuperadas, medidas: contexto.medidas });
+  // tres bloques: lo fijo (caché), lo estable del encargo —modo, medidas, ejemplos— (caché) y lo que cambia cada turno (sin caché)
+  const sistema = [{ text: sistemaFijo(brain, contexto.plan.fijas, { herramientas: modoHerramientas }), cache: true }, { text: estable, cache: true }, { text: sistemaVolatil({ recuperadas: contexto.plan.recuperadas }) }];
 
-  const mensajes = [...previos.map((m) => ({ role: m.role, content: m.content })), { role: 'user', content: mensajeUsuario }];
+  const mensajes = [...compactarHistorial(previos.map((m) => ({ role: m.role, content: m.content }))), { role: 'user', content: mensajeUsuario }];
   while (mensajes.length && mensajes[0].role !== 'user') mensajes.shift();
 
   const t0 = ahora();
@@ -179,7 +197,7 @@ export async function mensaje(env, ctx, db, brain, chatId, datos, { fetchFn = fe
 
   const info = {
     modelo: { id: modelo.id, nombre: modelo.nombre, entrena: !!modelo.entrena, de }, avisos,
-    modo: res.modos.length ? { nombre: nombresDeModos(res), nota: res.modo.nota, notas: res.modos.map((m) => m.nota), origen: res.origen, ...(modoAprendido.length ? { aprendidas: modoAprendido } : {}) } : { nombre: res.origen === 'libre' ? 'Libre' : null, origen: res.origen, pregunta: res.pregunta, sugerido: res.sugerido?.nota },
+    modo: res.modos.length ? { nombre: nombresDeModos(res), nota: res.modo.nota, notas: res.modos.map((m) => m.nota), origen: res.origen, ...(modoAprendido.length ? { aprendidas: modoAprendido } : {}), ...(contexto.medidas?.length ? { medidas: contexto.medidas } : {}) } : { nombre: res.origen === 'libre' ? 'Libre' : null, origen: res.origen, pregunta: res.pregunta, sugerido: res.sugerido?.nota },
     fijas: contexto.fijas, leidas: contexto.leidas, omitidas: contexto.omitidas, significado: contexto.significado, profundidad,
   };
 
@@ -202,7 +220,7 @@ export async function mensaje(env, ctx, db, brain, chatId, datos, { fetchFn = fe
     const acum = acumulador(); let espaciado = false;
     let lector = lectorDeEventos(), upstream = null, reloj;
     const maxTokens = tokensDe(fn, brief), esfuerzo = esfuerzoDe(ajustes.pensamiento, fn);
-    const ejecutor = conHerramientas ? crearEjecutor({ env, db, brain, cambios }) : null;
+    const ejecutor = conHerramientas ? crearEjecutor({ env, db, brain, cambios, medidas: contexto.medidas, soloLectura: modoHerramientas === 'lectura' }) : null;
     const conversacion = mensajes.map((m) => ({ ...m }));
     // lee del proveedor con vigilancia: si pasa `inactividad` ms sin recibir nada, se da por colgado (y no se queda el spinner para siempre)
     const leer = () => Promise.race([upstream.read(), new Promise((_, no) => { reloj = setTimeout(() => no(new HttpError(504, `${modelo.nombre} dejó de contestar a mitad de la respuesta.`)), tiempos?.inactividad ?? INACTIVIDAD); })]).finally(() => clearTimeout(reloj));
@@ -213,7 +231,7 @@ export async function mensaje(env, ctx, db, brain, chatId, datos, { fetchFn = fe
         for (let ronda = 0; ; ronda++) {
           lector = lectorDeEventos();
           const ultima = ronda >= MAX_RONDAS - 1;   // en la última vuelta se le obliga a contestar en texto con lo que ya leyó
-          const res2 = await llamarEnFlujo(env, modelo, { sistema, mensajes: conversacion, maxTokens, esfuerzo, ...(ejecutor ? { herramientas: HERRAMIENTAS, sinHerramientas: ultima } : {}) }, { fetchFn, esperas, tiempos });
+          const res2 = await llamarEnFlujo(env, modelo, { sistema, mensajes: conversacion, maxTokens, esfuerzo, ...(ejecutor ? { herramientas: HERRAMIENTAS.filter((h) => ejecutor.permite(h.name)), sinHerramientas: ultima } : {}) }, { fetchFn, esperas, tiempos });
           upstream = res2.body.getReader();
           if (ronda > 0 && acum.texto && !espaciado) { espaciado = true; await w.write(enc.encode(`event: content_block_delta\ndata: ${JSON.stringify({ type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: '\n\n' } })}\n\n`)); }
           for (;;) {
@@ -224,7 +242,9 @@ export async function mensaje(env, ctx, db, brain, chatId, datos, { fetchFn = fe
           const e = lector.estado;
           if (e.error) throw new Error(e.error);
           const pedidas = ejecutor && e.parada === 'tool_use' ? e.herramientas : [];
-          acum.sumar(e); if (e.texto.trim()) espaciado = false;
+          if (modoHerramientas === 'lectura' && pedidas.length) { acum.borrador = e.texto.trim() ? e.texto : acum.borrador; acum.sumar({ texto: '', uso: e.uso, parada: e.parada, fin: e.fin }); await w.write(sse('am_descartar', {})); }   // lo escrito antes de analizar es borrador: no se guarda
+          else acum.sumar(e);
+          if (e.texto.trim() && !(modoHerramientas === 'lectura' && pedidas.length)) espaciado = false;
           if (!pedidas.length) break;
           if (ultima) { acum.tope = true; break; }   // (con tool_choice none no debería pedir más; por si acaso)
           // el modelo pidió herramientas: se ejecutan y se le devuelve el resultado para que siga
@@ -244,6 +264,8 @@ export async function mensaje(env, ctx, db, brain, chatId, datos, { fetchFn = fe
         await w.write(enc.encode(`event: message_stop\ndata: {"type":"message_stop"}\n\n`));
       }
       // una respuesta sin message_stop se cortó a mitad; una con stop_reason max_tokens topó con el límite: las dos se marcan para que el navegador lo diga
+      // si tras analizar el modelo contestó algo breve que no es una letra, la letra era el borrador: no se pierde
+      if (modoHerramientas === 'lectura' && acum.borrador && !pareceLetra(acum.texto) && pareceLetra(acum.borrador)) { acum.texto = `${acum.borrador.trim()}\n\n${acum.texto}`.trim(); await w.write(sse('am_texto_final', { texto: acum.texto })); }
       const fin = acum.con(null), incompleta = !fin.fin && !acum.tope, parada = acum.tope ? 'max_rondas' : fin.parada;
       const { usd, mensajeId } = await guardar(fin, { parada, ...(incompleta ? { incompleta: true } : {}) });
       await w.write(sse('am_done', { usd, uso: fin.uso, modelo: modelo.id, mensajeId, chatId: chat.id, parada, incompleta, cambios: cambiosPublicos(cambios) }));

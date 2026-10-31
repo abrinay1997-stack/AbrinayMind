@@ -169,3 +169,16 @@ test('modos: «de forma libre» se entiende como libre, salvo que la conversaci�
   const c = resolverModo(cuatro, null, 'si se puede mezclar de forma libre', ['Modo 3 — Emocional-Vulnerable', 'Modo 2 — Técnico-Batalla']);
   assert.equal(c.origen, 'continua'); assert.equal(c.modos.length, 2);
 });
+
+test('prompt: tres bloques (fijo y estable con caché; lo que cambia cada turno, sin caché) y los ejemplos del modo van en el estable', async () => {
+  const p = espiar(() => ok('Va.'));
+  const a = await conChat({ proveedor: p });
+  await a.msg('', { fn: 'letra', brief: { titulo: 'x', tema: 'niebla', modo: 'Modo 1 — Introspectivo' } });
+  const sys = p.cuerpos[0].system;
+  assert.equal(sys.length, 3);
+  assert.ok(sys[0].cache_control && sys[1].cache_control && !sys[2].cache_control, 'los dos primeros con caché; el último, no');
+  assert.match(sys[1].text, /Modo del encargo: «Introspectivo-Psicológico»[\s\S]*<ejemplos_de_su_voz>[\s\S]*Niebla/);
+  assert.match(sys[2].text, /^HOY: [\s\S]*<recuperado>/); assert.doesNotMatch(sys[2].text, /<ejemplos_de_su_voz>/);
+  await a.msg('', { fn: 'letra', brief: { titulo: 'x', tema: 'otra cosa', modo: 'Modo 1 — Introspectivo' } });
+  assert.equal(p.cuerpos[1].system[1].text, sys[1].text, 'el bloque estable es idéntico entre turnos del mismo modo: por eso se puede cachear');
+});

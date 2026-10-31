@@ -166,3 +166,18 @@ test('notas fijas largas: se recorta por el medio y se conserva lo más nuevo (l
   const chica = new Map([['Reglas aprendidas', { ...notas.get('Reglas aprendidas'), texto: '# R\n\n- una regla' }]]);
   assert.equal(planear({ notas: chica, grafo }).omitidas.recortadas.length, 0);
 });
+
+test('historial: las letras largas de turnos anteriores se recortan; lo último que se trabaja queda íntegro', async () => {
+  const { compactarHistorial } = await import('../src/chat.js');
+  const larga = 'verso inventado de relleno para la prueba '.repeat(120);   // ~5.000 letras
+  const msgs = [
+    { role: 'user', content: 'Corrige esto:\n' + larga }, { role: 'assistant', content: larga + ' (versión 1)' },
+    { role: 'user', content: 'encargo 2' }, { role: 'assistant', content: larga + ' (versión 2)' },
+    { role: 'user', content: 'otra cosa corta' }, { role: 'assistant', content: larga + ' (versión 3)' },
+  ];
+  const c = compactarHistorial(msgs);
+  assert.match(c[0].content, /recortado: era un mensaje largo/, 'el mensaje del artista con una letra pegada, si ya pasó, también'); assert.ok(c[0].content.length < 700);
+  assert.match(c[1].content, /recortado/);
+  assert.equal(c[3].content, msgs[3].content); assert.equal(c[5].content, msgs[5].content, 'los dos últimos del cerebro, íntegros');
+  assert.equal(c[2].content, 'encargo 2'); assert.equal(c[4].content, 'otra cosa corta', 'lo corto no se toca');
+});

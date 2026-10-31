@@ -59,6 +59,8 @@ export async function flujo(ruta, cuerpo, manejadores, { senal } = {}) {
     let d; try { d = JSON.parse(datos); } catch { return; }
     if (evento === 'am_context') manejadores.contexto?.(d);
     else if (evento === 'am_paso') manejadores.paso?.(d);
+    else if (evento === 'am_descartar') manejadores.descartar?.(d);
+    else if (evento === 'am_texto_final') manejadores.textoFinal?.(d.texto);
     else if (evento === 'am_cambios') manejadores.cambios?.(d);
     else if (evento === 'am_done') manejadores.hecho?.(d);
     else if (evento === 'am_error') manejadores.error?.(d.error || 'Se cortó la respuesta.');
