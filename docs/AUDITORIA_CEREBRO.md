@@ -17,7 +17,7 @@ Las mediciones se reproducen con `node scripts/dev/medir-cerebro.mjs` (bóveda i
 
 5. **El cerebro no recuerda lo que leyó entre mensajes**: busca solo con el último mensaje. «Hazla más corta» → leyó **0 notas** (el turno anterior, 39).
 6. **Elige mal el modo por coincidencia de letras**, no de palabras: «ex» se activa con «exp**ex**…» y «tirar» con «re**tirar**», y con una sola coincidencia ya no pregunta: escribe en el modo equivocado.
-7. **Lee poco y lee la cabeza de las notas**, no el pasaje que casó; la búsqueda por significado deja pasar casi toda la bóveda (ya causó el fallo de las 100 consultas).
+7. **La sinapsis no es precisa**: de cada nota fuerte lee el inicio y no el pasaje que casó; la búsqueda por significado deja pasar casi toda la bóveda (ya causó el fallo de las 100 consultas) y el ranking no distingue entre notas que dicen lo mismo. *No se trata de leer más, sino de elegir mejor.*
 8. **No hay espacio de razonamiento**: el prompt pide decidir la idea central pero prohíbe explicar antes de la letra, y no hay pensamiento extendido ni revisión contra las reglas.
 
 ## Cómo viaja un mensaje (y dónde se rompe)
@@ -55,7 +55,7 @@ navegador ◀──SSE── am_context · trozos · am_done / am_error         
 | L2 | P0 | **Detección de modo por trozos de letras y con una sola coincidencia.** | Medido: «una experiencia en el exterior» → modo con la palabra `ex`; «retirar la mano» → modo con `tirar`; ambos con confianza 0,5, que basta para no preguntar. | Coincidir por palabra completa (con su raíz); exigir 2 aciertos o una palabra larga/exacta; en el constructor, si no está claro, preguntar en la interfaz (botones de modos) antes de gastar la llamada. |
 | L3 | P1 | **La búsqueda por significado deja pasar casi toda la bóveda.** Umbral 0,3 y normalización `s/0,75`: los vectores de textos no relacionados suelen quedar en torno a 0,3–0,5, así que casi toda nota recibe un puntaje de base. | Código (`search.js`, `meaning.js`). Fue lo que superó las 100 consultas. *Hipótesis a calibrar con tus vectores reales, no verificable aquí.* | Restar la mediana (o z-score), quedarse con las 60 mejores, y un diagnóstico («¿por qué leyó esto?») con puntajes para calibrar. |
 | L4 | P1 | **Las notas «fuertes» se leen por la cabeza**: 3.200 caracteres iniciales, no el pasaje que casó; las fijas se recortan a 6.000 sin avisar. | `public/core/context.js` (`MAX_COMPLETA`, `MAX_FIJA`, `recortar`). | Pasajes relevantes + cabecera; avisar en la interfaz cuando una fija se recorta. |
-| L5 | P1 | **Presupuesto de lectura conservador**: normal = 30.000 caracteres (≈7.500 tokens), profunda = 60.000. | Medido: 33 notas ≈ 40.000 caracteres con las fijas; en tu captura, 10.108 tokens de entrada. El modelo admite mucho más. | Normal 60.000 / profunda 150.000 con coste estimado visible; el prefijo estable queda en caché. |
+| L5 | P1 | **Calidad antes que cantidad.** El presupuesto actual (normal = 30.000 caracteres) ya trae ~33 notas; el problema no es el tamaño sino que muchas entran por cercanía débil o repiten lo mismo. **No se sube el presupuesto.** | Medido: 33 notas ≈ 40.000 caracteres con las fijas. | Elegir con diversidad (no dos notas que dicen lo mismo), mostrar *por qué* entra cada una (por qué camino de sinapsis) y descartar las de energía baja aunque quepan; el tamaño puede incluso bajar. |
 | L6 | P2 | **Solo la parte fija usa caché.** El bloque recuperado cambia cada turno, aunque modo y ancladas no. | `chat.js`: `cache: true` solo en el primer bloque. | Tres bloques: fijas (caché) · modo+ancladas (caché) · recuperado (sin caché). |
 | L7 | P2 | **El historial manda 16 mensajes enteros**, incluidas letras largas anteriores: encarecen y el modelo tiende a copiar borradores previos. | `HISTORIAL = 16`. | Conservar íntegra la última letra; las anteriores, en resumen. |
 
@@ -76,13 +76,13 @@ navegador ◀──SSE── am_context · trozos · am_done / am_error         
 | B | **Cliente**: R5, R9, aviso y botón «Continuar»/«Reintentar» | Bajo | No |
 | C | **Lectura**: L1, L2, L4 (+ constructor que pregunta el modo en pantalla) | Medio | Cambia qué notas entran y cuándo se pregunta el modo |
 | D | **Calibrar el significado**: L3 + herramienta de diagnóstico; calibrar con tus vectores reales | Medio | Cambia la mezcla de resultados |
-| E | **Presupuesto y caché**: L5, L6, L7 | Bajo | Sube el gasto por mensaje (a medir), baja con caché |
+| E | **Selección con diversidad y caché**: L5, L6, L7 | Bajo | Baja el gasto por mensaje (caché y menos relleno) |
 | F | **Razonamiento**: Z1, Z2, Z3, Z4 con interruptores en Ajustes | Medio | Sube el gasto por letra si se activa |
 
 ## Preguntas abiertas
 
 1. **¿El Worker está en plan gratuito o de pago?** En Cloudflare: *Workers & Pages → abrinay-mind → Metrics* (CPU time p99 y errores «Exceeded CPU/resource limits») y *Logs* (línea `[abrinay-mind]`). Si es gratuito, R1 pasa a ser la prioridad absoluta.
-2. ¿Aceptas subir el presupuesto de lectura por defecto (L5) y ver el coste estimado antes de enviar?
+2. ~~¿Subir el presupuesto de lectura?~~ Descartado por Abrinay: el objetivo es la calidad de la sinapsis y de la letra, no leer más.
 3. ¿Activamos el pensamiento extendido por defecto o lo dejamos como interruptor apagado?
 4. En el constructor, ¿prefieres que **pregunte el modo en pantalla** (con botones) cuando no esté claro, o que elija el más probable y lo diga?
 
