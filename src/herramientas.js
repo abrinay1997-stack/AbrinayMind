@@ -11,7 +11,7 @@ import { aceptarRegla } from './songs.js';
 import { fold, enlaces as enlacesDe, nombreValido, carpetaValida, resumen } from '../public/core/text.js';
 
 export const TIPOS = ['concepto', 'idea', 'estructura', 'metrica', 'tecnica', 'tema', 'recurso', 'referencia'];
-export const TOPES = { escrituras: 40, borrados: 25, lecturaLetras: 6000, antes: 20_000 };
+export const TOPES = { escrituras: 40, borrados: 25, lecturas: 8, lecturaLetras: 6000, antes: 20_000 };
 const PROTEGIDAS = new Set(Object.values(NOTAS).map(fold));
 const hoy = () => new Date().toISOString().slice(0, 10);
 
@@ -42,7 +42,8 @@ const falla = (texto) => ({ texto, error: true });
  * → { ejecutar(nombre, entrada) → { texto, error? }, cambios }
  */
 export function crearEjecutor({ env, db, brain, cambios = [] }) {
-  const cuenta = { escrituras: 0, borrados: 0 };
+  const cuenta = { escrituras: 0, borrados: 0, lecturas: 0 };
+  const lee = () => { if (++cuenta.lecturas > TOPES.lecturas) throw new HttpError(429, `Ya hiciste ${TOPES.lecturas} lecturas en este mensaje: contesta al artista con lo que tienes.`); };
   const POR = 'chat-ia';
   const real = async (n) => { const x = (await indice(db, brain)).get(fold(String(n ?? '').trim())); if (!x) throw noEsta(`No hay una nota llamada «${recortar(String(n ?? ''), 60)}». Usa buscar_notas o listar_notas.`); return x; };
   const escribe = () => { if (++cuenta.escrituras > TOPES.escrituras) throw new HttpError(429, `Tope de ${TOPES.escrituras} cambios por mensaje. Dile al artista lo que falta y que lo pida de nuevo.`); };
@@ -52,21 +53,25 @@ export function crearEjecutor({ env, db, brain, cambios = [] }) {
 
   const acciones = {
     async buscar_notas({ consulta }) {
+      lee();
       const { resultados } = await buscar(env, db, brain, String(consulta ?? '').slice(0, 600), { n: 10 });
       if (!resultados.length) return 'No encontré notas parecidas.';
       const filas = await notasPorNombre(db, brain.id, resultados.map((r) => r.nombre), 'name, folder, text, tipo');
       return filas.map((f) => `- ${f.name} [${f.folder || 'sin carpeta'}${f.tipo ? ' · ' + f.tipo : ''}]: ${resumen(f.text, 200)}`).join('\n');
     },
     async leer_nota({ nombre }) {
+      lee();
       const n = await notas.leer(db, brain.id, await real(nombre));
       const cuerpo = n.text.length > TOPES.lecturaLetras ? n.text.slice(0, TOPES.lecturaLetras) + `\n[…recortada: ${TOPES.lecturaLetras} de ${n.text.length} letras]` : n.text;
       return `NOTA «${n.name}» [${n.folder || 'sin carpeta'}${n.tipo ? ' · ' + n.tipo : ''}]\nEnlaza a: ${n.salientes.map((s) => s.target + (s.existe ? '' : ' (no existe)')).join(', ') || '—'}\nEnlazada desde: ${n.entrantes.join(', ') || '—'}\n\n<nota_texto>\n${cuerpo.replace(/<\/nota_texto>/gi, '<\\/nota_texto>')}\n</nota_texto>`;
     },
     async listar_notas({ carpeta = '', contiene = '' }) {
+      lee();
       const l = await notas.listar(db, brain.id, { carpeta: String(carpeta || ''), q: String(contiene || '') });
       return `${l.length} notas${l.length > 80 ? ' (primeras 80)' : ''}:\n` + l.slice(0, 80).map((f) => `- ${f.name} [${f.folder || 'sin carpeta'}${f.tipo ? ' · ' + f.tipo : ''}]`).join('\n');
     },
     async salud_del_cerebro() {
+      lee();
       const s = await notas.salud(db, brain.id);
       return JSON.stringify({ resumen: s.resumen, enlacesRotos: s.rotos.slice(0, 30), huerfanas: s.huerfanas.slice(0, 40), sinTipo: s.sinTipo.slice(0, 30) });
     },

@@ -139,3 +139,23 @@ test('lectura: un mensaje corto («sigue») se busca con lo anterior de la conve
   const l2 = r2.eventos.find((e) => e.evento === 'am_context').datos.leidas;
   assert.ok(l2.some((l) => l.nombre === 'Anáfora' && l.motivo === 'busqueda'), 'Anáfora se sigue leyendo: ' + JSON.stringify(l2.map((l) => [l.nombre, l.motivo])));
 });
+
+const cuatro = modosDe([
+  { nombre: 'Modo 1 — Introspectivo-Psicológico', texto: '---\ntipo: modo\nmodo_nombre: Introspectivo-Psicológico\norden: 1\npalabras: profundo, capas, introspeccion\n---\nx' },
+  { nombre: 'Modo 2 — Técnico-Batalla', texto: '---\ntipo: modo\nmodo_nombre: Técnico-Batalla\norden: 2\npalabras: batalla, diss, tirar\n---\nx' },
+  { nombre: 'Modo 3 — Emocional-Vulnerable', texto: '---\ntipo: modo\nmodo_nombre: Emocional-Vulnerable\norden: 3\npalabras: chica, sentimientos, desamor\n---\nx' },
+  { nombre: 'Modo 4 — Comercial-Pop', texto: '---\ntipo: modo\nmodo_nombre: Comercial-Pop\norden: 4\npalabras: pegue, viral, single\n---\nx' },
+]);
+test('modos: el propio nombre del modo también lo señala, así que «Emocional, Vulnerable, Técnico, Introspectivo» es una mezcla', () => {
+  assert.deepEqual(cuatro[0].palabras.slice(0, 3), ['profundo', 'capas', 'introspeccion'], 'primero las que declara el artista (es lo que se muestra)');
+  assert.ok(cuatro[2].palabras.includes('emocional') && cuatro[2].palabras.includes('vulnerable'));
+  const r = resolverModo(cuatro, null, 'me gusta la idea de que sea Emocional, Vulnerable, Técnico, Introspectivo', null);
+  assert.equal(r.origen, 'detectado'); assert.deepEqual(r.modos.map((m) => m.id).sort(), ['modo-1-introspectivo-psicologico', 'modo-2-tecnico-batalla', 'modo-3-emocional-vulnerable'].sort());
+  assert.match(r.motivo, /mezcla/);
+});
+test('modos: «de forma libre» se entiende como libre, salvo que la conversación ya venga en una mezcla', () => {
+  const l = resolverModo(cuatro, null, 'si se puede mezclar de forma libre', null);
+  assert.equal(l.origen, 'libre'); assert.equal(l.pregunta, false);
+  const c = resolverModo(cuatro, null, 'si se puede mezclar de forma libre', ['Modo 3 — Emocional-Vulnerable', 'Modo 2 — Técnico-Batalla']);
+  assert.equal(c.origen, 'continua'); assert.equal(c.modos.length, 2);
+});

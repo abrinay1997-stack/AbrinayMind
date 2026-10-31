@@ -10,8 +10,12 @@ export function modosDe(notas) {
     .filter((n) => hechosDe(n.texto).tipo === 'modo')
     .map((n) => {
       const { fm } = leerCabecera(n.texto);
-      const palabras = typeof fm.palabras === 'string' ? fm.palabras.split(',').map((x) => fold(x).trim()).filter(Boolean) : [];
-      return { id: String(fm.modo_id || fold(n.nombre).replace(/[^a-z0-9]+/g, '-')), nombre: String(fm.modo_nombre || n.nombre), nota: n.nombre, palabras, orden: Number(fm.orden) || 99 };
+      const declaradas = typeof fm.palabras === 'string' ? fm.palabras.split(',').map((x) => fold(x).trim()).filter(Boolean) : [];
+      const nombre = String(fm.modo_nombre || n.nombre);
+      // el propio nombre del modo también lo señala («emocional, vulnerable, técnico…»): sus palabras de 5+ letras van al final (después de las que declara el artista)
+      const delNombre = fold(nombre).split(/[^a-z0-9]+/).filter((x) => x.length >= 5 && !/^(modo|numero)$/.test(x) && !declaradas.includes(x));
+      const palabras = [...declaradas, ...delNombre];
+      return { id: String(fm.modo_id || fold(n.nombre).replace(/[^a-z0-9]+/g, '-')), nombre, nota: n.nombre, palabras, orden: Number(fm.orden) || 99 };
     })
     .sort((a, b) => a.orden - b.orden);
 }

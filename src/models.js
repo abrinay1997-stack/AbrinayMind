@@ -117,7 +117,7 @@ export function errorDeApi(status, datos, modelo) {
 const baseDe = (env, p) => String(env[p.baseVar] || p.base).replace(/\/+$/, '');
 
 /** Arma la petición al proveedor (puro: se prueba sin red). `sistema`: texto, o bloques [{ text, cache }] para el prefijo con caché. */
-export function armarLlamada(env, modelo, { sistema, mensajes, maxTokens = 4096, stream = false, temperatura = null, pensar = 0, herramientas = null }) {
+export function armarLlamada(env, modelo, { sistema, mensajes, maxTokens = 4096, stream = false, temperatura = null, pensar = 0, herramientas = null, sinHerramientas = false }) {
   const p = PROVEEDORES[modelo.proveedor];
   const bloques = typeof sistema === 'string' ? [{ text: sistema }] : sistema;
   const cuerpo = { model: modelo.id, max_tokens: maxTokens, messages: mensajes };
@@ -128,7 +128,7 @@ export function armarLlamada(env, modelo, { sistema, mensajes, maxTokens = 4096,
   if (modelo.proveedor === 'anthropic') {
     cuerpo.system = bloques.map((b) => ({ type: 'text', text: b.text, ...(b.cache ? { cache_control: { type: 'ephemeral' } } : {}) }));
     if (stream) cuerpo.stream = true;
-    if (herramientas?.length) cuerpo.tools = herramientas;
+    if (herramientas?.length) { cuerpo.tools = herramientas; if (sinHerramientas) cuerpo.tool_choice = { type: 'none' }; }   // «none»: las declara (la API lo exige si el historial trae herramientas) pero obliga a contestar en texto
   } else {
     cuerpo.system = bloques.map((b) => b.text).join('\n\n');
   }

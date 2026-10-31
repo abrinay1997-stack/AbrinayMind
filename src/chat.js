@@ -13,7 +13,8 @@ import { armarContexto, resolverModo, nombresDeModos, modosDelCerebro, sistemaFi
 const enc = new TextEncoder();
 const sse = (evento, datos) => enc.encode(`event: ${evento}\ndata: ${JSON.stringify(datos)}\n\n`);
 const HISTORIAL = 16;
-const MAX_RONDAS = 8;          // pasos máximos de «el modelo pide una herramienta → se ejecuta → sigue» en un mensaje
+export const SIN_RESPUESTA = '(sin respuesta)';
+const MAX_RONDAS = 6;          // pasos máximos de «el modelo pide una herramienta → se ejecuta → sigue» en un mensaje
 const INACTIVIDAD = 45_000;   // ms sin recibir nada del modelo antes de darlo por colgado
 
 /** Tokens máximos de la respuesta: lo que cabe en la letra pedida (más versiones, más espacio) y el resto de tareas. */
@@ -57,6 +58,11 @@ export async function borrar(db, brain, id) {
 }
 
 /* ---------- un turno ---------- */
+
+/** Lo que le decimos al artista mientras el cerebro usa una herramienta. */
+const VERBOS = { buscar_notas: 'Buscando en el cerebro', leer_nota: 'Leyendo', listar_notas: 'Mirando la lista de notas', salud_del_cerebro: 'Revisando la salud del cerebro', crear_nota: 'Creando', ampliar_nota: 'Ampliando', editar_nota: 'Reescribiendo', mover_nota: 'Moviendo', renombrar_nota: 'Renombrando', borrar_nota: 'Mandando a la papelera', conectar_notas: 'Conectando', quitar_enlace: 'Quitando un enlace de', anadir_regla: 'Guardando una regla', recalcular_menciones: 'Recalculando conexiones' };
+export const pasoDe = (nombre, entrada) => { const x = entrada?.nombre || entrada?.origen || entrada?.consulta || ''; return `${VERBOS[nombre] || 'Trabajando'}${x ? ` «${recortar(String(x), 40)}»` : ''}…`; };
+
 
 /** Suma lo que dejó cada respuesta del modelo en un turno con herramientas (texto, uso, cómo terminó). `con(actual)` = lo acumulado + la respuesta en curso. */
 export function acumulador() {
@@ -182,8 +188,9 @@ export async function mensaje(env, ctx, db, brain, chatId, datos, { fetchFn = fe
   const guardar = async (estado, extra = {}) => {
     const usd = await uso.anotar(db, { brainId: brain.id, fn, modelo, uso: estado.uso, ms: ahora() - t0 });
     let mensajeId = null;
-    if (estado.texto.trim() || cambios.length) {
-      const ins = await correr(db, 'insert into chat_messages (chat_id, role, content, meta, created) values (?,?,?,?,?)', chat.id, 'assistant', estado.texto.trim() ? estado.texto : '(cambios en el cerebro)', JSON.stringify({ modelo: modelo.id, nombreModelo: modelo.nombre, entrena: !!modelo.entrena, usd, uso: estado.uso, leidas: contexto.leidas, fijas: contexto.fijas, omitidas: contexto.omitidas, modo: info.modo, fn, brief: brief || undefined, ...(cambios.length ? { cambios } : {}), ...extra }), ahora());
+    // siempre queda una respuesta guardada: si no hubo texto, un marcador (con el error o la parada en el meta) para que el mensaje del artista no quede en el aire
+    {
+      const ins = await correr(db, 'insert into chat_messages (chat_id, role, content, meta, created) values (?,?,?,?,?)', chat.id, 'assistant', estado.texto.trim() ? estado.texto : cambios.length ? '(cambios en el cerebro)' : SIN_RESPUESTA, JSON.stringify({ modelo: modelo.id, nombreModelo: modelo.nombre, entrena: !!modelo.entrena, usd, uso: estado.uso, leidas: contexto.leidas, fijas: contexto.fijas, omitidas: contexto.omitidas, modo: info.modo, fn, brief: brief || undefined, ...(cambios.length ? { cambios } : {}), ...extra }), ahora());
       mensajeId = ins.meta?.last_row_id ?? null;
     }
     await correr(db, 'update chats set updated = ? where id = ?', ahora(), chat.id);
@@ -204,7 +211,8 @@ export async function mensaje(env, ctx, db, brain, chatId, datos, { fetchFn = fe
       if (PROVEEDORES[modelo.proveedor].streaming) {
         for (let ronda = 0; ; ronda++) {
           lector = lectorDeEventos();
-          const res2 = await llamarEnFlujo(env, modelo, { sistema, mensajes: conversacion, maxTokens, pensar, ...(ejecutor ? { herramientas: HERRAMIENTAS } : {}) }, { fetchFn, esperas, tiempos });
+          const ultima = ronda >= MAX_RONDAS - 1;   // en la última vuelta se le obliga a contestar en texto con lo que ya leyó
+          const res2 = await llamarEnFlujo(env, modelo, { sistema, mensajes: conversacion, maxTokens, pensar, ...(ejecutor ? { herramientas: HERRAMIENTAS, sinHerramientas: ultima } : {}) }, { fetchFn, esperas, tiempos });
           upstream = res2.body.getReader();
           if (ronda > 0 && acum.texto && !espaciado) { espaciado = true; await w.write(enc.encode(`event: content_block_delta\ndata: ${JSON.stringify({ type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: '\n\n' } })}\n\n`)); }
           for (;;) {
@@ -217,10 +225,11 @@ export async function mensaje(env, ctx, db, brain, chatId, datos, { fetchFn = fe
           const pedidas = ejecutor && e.parada === 'tool_use' ? e.herramientas : [];
           acum.sumar(e); if (e.texto.trim()) espaciado = false;
           if (!pedidas.length) break;
-          if (ronda >= MAX_RONDAS - 1) { acum.tope = true; break; }
+          if (ultima) { acum.tope = true; break; }   // (con tool_choice none no debería pedir más; por si acaso)
           // el modelo pidió herramientas: se ejecutan y se le devuelve el resultado para que siga
           const resultados = [];
           for (const u of pedidas) {
+            await w.write(sse('am_paso', { texto: pasoDe(u.name, u.input) }));
             const r = await ejecutor.ejecutar(u.name, u.input);
             resultados.push({ type: 'tool_result', tool_use_id: u.id, content: r.texto, ...(r.error ? { is_error: true } : {}) });
           }

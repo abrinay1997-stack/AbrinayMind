@@ -146,10 +146,10 @@ test('un modelo que entrena nunca recibe herramientas (ni notas privadas)', asyn
   assert.equal((await t.j('GET', `/api/b/p/note?name=Niebla`)).status, 200);
 });
 
-test('rondas: si el modelo no deja de pedir herramientas, se corta en 8 y se avisa', async () => {
+test('rondas: si el modelo no deja de pedir herramientas, se corta en 6 y se avisa', async () => {
   const a = await conCerebro(() => ({ texto: 'otra vuelta', usos: [{ name: 'listar_notas', input: {} }] }));
   const r = await a.msg('sigue sin parar');
-  assert.equal(a.proveedor.cuerpos.length, 8);
+  assert.equal(a.proveedor.cuerpos.length, 6);
   const done = r.eventos.find((e) => e.evento === 'am_done').datos; assert.equal(done.parada, 'max_rondas');
 });
 
@@ -160,4 +160,28 @@ test('en conversación libre no se pregunta el modo salvo que pidan escribir alg
   assert.doesNotMatch(a.proveedor.cuerpos[0].system.map((b) => b.text).join(''), /Modo del encargo: INCIERTO/);
   const r2 = await a.msg('escríbeme una letra sobre el mar');
   assert.equal(r2.eventos.find((e) => e.evento === 'am_context').datos.modo.pregunta, true);
+});
+
+test('REPRODUCCIÓN: un modelo que solo lee notas y nunca escribe texto no deja el mensaje en el aire', async () => {
+  const a = await conCerebro((cuerpo, n) => (cuerpo.tool_choice?.type === 'none' ? { texto: 'Con lo que leí, esto es lo que te propongo.' } : { usos: [{ name: 'leer_nota', input: { nombre: 'Anáfora' } }] }));
+  const r = await a.msg('si se puede mezclar de forma libre');
+  const m = await a.ultimo();
+  assert.ok(m, 'quedó una respuesta guardada (antes solo quedaba tu mensaje)');
+  assert.match(m.content, /Con lo que leí/, 'en la última vuelta se le obliga a contestar en texto');
+  assert.ok(a.proveedor.cuerpos.length <= 6, 'no da más de 6 vueltas: ' + a.proveedor.cuerpos.length);
+  assert.equal(a.proveedor.cuerpos.at(-1).tool_choice.type, 'none');
+  assert.ok(a.proveedor.cuerpos.at(-1).tools, 'sigue declarando las herramientas (la API lo exige si hay bloques de herramienta en el historial)');
+  assert.ok(r.eventos.some((e) => e.evento === 'am_paso'), 'se avisa de lo que está haciendo (leyendo notas)');
+});
+
+test('REPRODUCCIÓN: un error sin ningún texto tampoco borra la respuesta: queda guardada con el aviso', async () => {
+  const proveedor = async () => new Response(JSON.stringify({ error: { message: 'Overloaded' } }), { status: 529 });
+  const a = await conCerebro(() => ({}), {});
+  a.t; // (el entorno usa su propio proveedor: aquí se prueba con otro)
+  const b = await (async () => { const t = await entorno({ proveedor }); await t.j('POST', '/api/brains/import', { cerebro: { slug: 'p', nombre: 'P', subtitulo: 'x' } }); await t.j('POST', '/api/b/p/import/notas', { notas: BOVEDA_CHICA }); const chat = (await t.j('POST', '/api/b/p/chats', {})).datos.conversacion; return { t, chat }; })();
+  await b.t.flujo(`/api/b/p/chats/${b.chat.id}/message`, { fn: 'chat', texto: 'hola', anclas: [], modo: null }); await b.t.esperar();
+  const ms = (await b.t.j('GET', `/api/b/p/chats/${b.chat.id}`)).datos.mensajes;
+  const bot = ms.filter((m) => m.role === 'assistant').at(-1);
+  assert.ok(bot, 'quedó la respuesta con el error');
+  assert.match(bot.meta.error, /saturado/);
 });
