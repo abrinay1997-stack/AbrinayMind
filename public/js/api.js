@@ -64,6 +64,7 @@ export async function flujo(ruta, cuerpo, manejadores, { senal } = {}) {
     else if (evento === 'am_error') manejadores.error?.(d.error || 'Se cortó la respuesta.');
     else if (evento === 'error' || d.type === 'error') manejadores.error?.(d.error?.message || 'El proveedor devolvió un error.');
     else if (d.type === 'content_block_delta' && d.delta?.type === 'text_delta') manejadores.texto?.(d.delta.text);
+    else if (d.type === 'content_block_delta' && d.delta?.type === 'thinking_delta') manejadores.pensando?.();
   };
   for (;;) {
     const { done, value } = await lector.read();

@@ -301,7 +301,12 @@ export async function montar(el, { param }) {
     if (!mensajes.length) vaciar(msgsInner);
     const burbuja = h('div.msg.user', h('div.bubble' + (brief ? '.brief' : ''), brief ? 'ENCARGO DE LETRA\n' + Object.entries(brief).filter(([k]) => k !== 'versiones' || brief.versiones > 1).map(([k, v]) => `${k}: ${v}`).join('\n') : texto));
     const orbe = h('span.orb.think'), cuerpo = h('div'), quien = h('div.who', orbe, h('b', { style: { color: 'var(--text-2)', fontWeight: 600 } }, brain?.name || 'Cerebro'), h('span', 'leyendo la memoria…'));
-    const leida = h('div'), pie = h('div.msg-foot'), cambiosEl = h('div'), pasoEl = h('span.faint');
+    const leida = h('div'), pie = h('div.msg-foot'), cambiosEl = h('div'), pasoEl = h('span.estado', { role: 'status' });
+    // qué está haciendo el cerebro AHORA (y desde hace cuántos segundos): leyendo la memoria, esperando al modelo, pensando, usando una herramienta o escribiendo
+    let estadoTxt = '', estadoDesde = Date.now();
+    const pintarEstado = () => { pasoEl.textContent = estadoTxt ? `${estadoTxt}… ${Math.round((Date.now() - estadoDesde) / 1000)} s` : ''; };
+    const estado = (t) => { if (t !== estadoTxt) { estadoTxt = t; estadoDesde = Date.now(); } pintarEstado(); };
+    const relojEstado = setInterval(pintarEstado, 1000);
     const respuesta = h('div.msg.bot', quien, leida, cambiosEl, cuerpo, pie);
     msgsInner.append(burbuja, respuesta); abajo();
     anunciar('El cerebro está leyendo y escribiendo…');
@@ -312,11 +317,12 @@ export async function montar(el, { param }) {
     try {
       await flujo(`${A.base}chats/${encodeURIComponent(id)}/message`, cuerpoPeticion, {
         contexto(i) {
-          info = i; if (i.modo?.aprendidas?.length) aviso(`Aprendí que ${i.modo.aprendidas.map((x) => `«${x}»`).join(', ')} suele${i.modo.aprendidas.length > 1 ? 'n' : ''} ser ${i.modo.nombre}. Puedes ajustarlo en la nota del modo.`, 'good', 7000); poner(quien, orbe, h('b', { style: { color: 'var(--text-2)', fontWeight: 600 } }, brain?.name || 'Cerebro'), h('span', i.modelo.nombre), i.modelo.entrena ? h('span.tag.warn', 'entrena') : null, i.modo?.nombre ? h('span.tag.accent', i.modo.nombre) : i.modo?.pregunta ? h('span.tag.warn', 'modo incierto') : null, pasoEl);
+          info = i; estado('Esperando al modelo'); if (i.modo?.aprendidas?.length) aviso(`Aprendí que ${i.modo.aprendidas.map((x) => `«${x}»`).join(', ')} suele${i.modo.aprendidas.length > 1 ? 'n' : ''} ser ${i.modo.nombre}. Puedes ajustarlo en la nota del modo.`, 'good', 7000); poner(quien, orbe, h('b', { style: { color: 'var(--text-2)', fontWeight: 600 } }, brain?.name || 'Cerebro'), h('span', i.modelo.nombre), i.modelo.entrena ? h('span.tag.warn', 'entrena') : null, i.modo?.nombre ? h('span.tag.accent', i.modo.nombre) : i.modo?.pregunta ? h('span.tag.warn', 'modo incierto') : null, pasoEl);
           poner(leida, cajaLeida(i)); for (const a of i.avisos || []) aviso(a, '', 6000); marcarMapa(i, true);
         },
-        texto(t) { acumulado += t; pasoEl.textContent = ''; orbe.classList.remove('think'); if (!pendiente) pendiente = requestAnimationFrame(pintarCuerpo); },
-        paso(d) { pasoEl.textContent = d.texto || ''; },
+        texto(t) { acumulado += t; estado('Escribiendo'); orbe.classList.remove('think'); if (!pendiente) pendiente = requestAnimationFrame(pintarCuerpo); },
+        paso(d) { estado((d.texto || 'Trabajando').replace(/…$/, '')); },
+        pensando() { estado('Pensando'); },
         cambios(d) { poner(cambiosEl, d.cambios?.length ? tarjetaCambios(d.cambios, null) : null); abajo(); },
         hecho(d) { hecho = d; },
         error(m) { fallido = m; },
@@ -326,13 +332,13 @@ export async function montar(el, { param }) {
         interrumpido = true;   // la conexión se cayó a mitad (pantalla apagada, cambio de red): lo recibido NO se borra
       } else if (e.name !== 'AbortError') {
         // el servidor rechazó antes de empezar: nada quedó guardado
-        burbuja.remove(); respuesta.remove(); fallo(e); ctrl = null; reponerBoton();
+        clearInterval(relojEstado); burbuja.remove(); respuesta.remove(); fallo(e); ctrl = null; reponerBoton();
         if (e.codigo === 'sin_llave' || e.codigo === 'entrena' || e.codigo === 'tope') aviso('Ve a Ajustes para resolverlo.', '', 5000);
         if (!mensajes.length) pintarMensajes();
         return false;
       }
     }
-    cancelAnimationFrame(pendiente); orbe.classList.remove('think'); pintarCuerpo();
+    clearInterval(relojEstado); estado(''); cancelAnimationFrame(pendiente); orbe.classList.remove('think'); pintarCuerpo();
     const sinFinal = !hecho && !fallido && !ctrl.signal.aborted;   // el flujo terminó sin avisar de que acabó: se cayó
     if (fallido) fallo(new Error(fallido));
     else if (interrumpido || sinFinal) aviso('Se interrumpió la conexión con el servidor. Lo que llegó quedó guardado; si falta, pulsa «Continuar».', 'bad', 9000);
