@@ -6,6 +6,7 @@ import { HttpError, bad, noEsta, ahora, idCorto, recortar } from './http.js';
 import { todas, una, correr, auditar } from './db.js';
 import { leerAjustes, elegirModelo, llamarEnFlujo, llamar, PROVEEDORES, costo, presupuestoPensar } from './models.js';
 import * as uso from './usage.js';
+import { aprenderPalabras } from './aprender-modos.js';
 import { HERRAMIENTAS, crearEjecutor, cambiosPublicos } from './herramientas.js';
 import { armarContexto, resolverModo, nombresDeModos, modosDelCerebro, sistemaFijo, sistemaVariable, encargoTexto, consultaDeEncargo } from './context.js';
 
@@ -147,12 +148,18 @@ export async function mensaje(env, ctx, db, brain, chatId, datos, { fetchFn = fe
   const res = resolverModo(modos, datos.modo ?? brief?.modo ?? null, base, brief ? null : previo);   // un encargo nuevo no hereda el modo del anterior; la charla sí
   // en una conversación (sin encargo) la duda de modo solo importa si piden escribir algo; si no, no se pregunta ni se ofrecen botones
   if (!brief && res.origen === 'incierto' && !/\b(letra|cancion|verso|estribillo|coro|escrib\w*|compon\w*)s?\b/.test(fold(texto))) { res.origen = 'conversacion'; res.pregunta = false; }
+  // el artista eligió el modo con los botones tras la duda del cerebro: las palabras distintivas de su encargo se quedan en ese modo
+  let modoAprendido = [];
+  if (datos.aprenderModo === true && res.origen === 'elegido' && res.modos.length === 1) modoAprendido = await aprenderPalabras(db, brain, res.modo, base, modos);
   const mensajeUsuario = brief ? encargoTexto(brief, res) : texto;
-  const consulta = brief ? consultaDeEncargo(brief, res.modos) : texto;
+  // un mensaje corto («sigue con el segundo verso») no dice de qué se habla: se busca con lo anterior de la conversación para leer las notas correctas
+  const ultimoDelArtista = [...previos].reverse().find((m) => m.role === 'user')?.content || '';
+  const consulta = brief ? consultaDeEncargo(brief, res.modos) : (texto.split(/\s+/).length < 8 && ultimoDelArtista ? `${recortar(ultimoDelArtista, 400)} ${texto}` : texto);
+  const previas = (() => { try { const ult = [...previos].reverse().find((m) => m.role === 'assistant'); return (JSON.parse(ult?.meta || '{}').leidas || []).filter((l) => l.motivo !== 'vecina').map((l) => l.nombre); } catch { return []; } })();
   const profundidad = ['ligera', 'normal', 'profunda'].includes(datos.profundidad) ? datos.profundidad : ajustes.profundidad;
   const anclas = (Array.isArray(datos.anclas) ? datos.anclas : []).map(String).slice(0, 8);
 
-  const contexto = await armarContexto(env, db, brain, { consulta, modo: res.modos.map((m) => m.nota), anclas, profundidad, entrena: !!modelo.entrena });
+  const contexto = await armarContexto(env, db, brain, { consulta, modo: res.modos.map((m) => m.nota), anclas, previas, profundidad, entrena: !!modelo.entrena });
   const modoTexto = res.modos.length ? (res.origen === 'detectado' ? `detectado: ${res.motivo}` : res.origen === 'continua' ? 'sigue el de la conversación' : 'elegido por el artista') : '';
   const sistema = [{ text: sistemaFijo(brain, contexto.plan.fijas, { herramientas: conHerramientas }), cache: true }, { text: sistemaVariable({ modos, modosSel: res.modos, libre: res.origen === 'libre', conversacion: res.origen === 'conversacion', modoTexto, recuperadas: contexto.plan.recuperadas }) }];
 
@@ -165,7 +172,7 @@ export async function mensaje(env, ctx, db, brain, chatId, datos, { fetchFn = fe
 
   const info = {
     modelo: { id: modelo.id, nombre: modelo.nombre, entrena: !!modelo.entrena, de }, avisos,
-    modo: res.modos.length ? { nombre: nombresDeModos(res), nota: res.modo.nota, notas: res.modos.map((m) => m.nota), origen: res.origen } : { nombre: res.origen === 'libre' ? 'Libre' : null, origen: res.origen, pregunta: res.pregunta, sugerido: res.sugerido?.nota },
+    modo: res.modos.length ? { nombre: nombresDeModos(res), nota: res.modo.nota, notas: res.modos.map((m) => m.nota), origen: res.origen, ...(modoAprendido.length ? { aprendidas: modoAprendido } : {}) } : { nombre: res.origen === 'libre' ? 'Libre' : null, origen: res.origen, pregunta: res.pregunta, sugerido: res.sugerido?.nota },
     fijas: contexto.fijas, leidas: contexto.leidas, omitidas: contexto.omitidas, significado: contexto.significado, profundidad,
   };
 

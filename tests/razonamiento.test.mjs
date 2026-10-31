@@ -108,3 +108,34 @@ test('mezcla: el cerebro lee las notas de todos los modos mezclados, el prompt l
   const r3 = await a.msg('otra cosa', { modo: 'libre' });
   assert.match(p.cuerpos[2].system[1].text, /LIBRE/); assert.equal(r3.eventos.find((e) => e.evento === 'am_context').datos.modo.nombre, 'Libre');
 });
+
+test('modos que aprenden: al elegir un modo con los botones tras la duda, las palabras distintivas se quedan en ese modo', async () => {
+  const { palabrasDistintivas } = await import('../src/aprender-modos.js');
+  assert.deepEqual(palabrasDistintivas('quiero una canción sobre desvelos y trampas, rap', modos), ['desvelos', 'trampas'], 'sin comunes, sin cortas y sin las que el modo ya tiene (rap)');
+  const p = espiar(() => ok('Va.'));
+  const a = await conChat({ proveedor: p });
+  const dudosa = await a.msg('una canción sobre los desvelos del barrio');
+  assert.equal(dudosa.eventos.find((e) => e.evento === 'am_context').datos.modo.pregunta, true);
+  const r = await a.msg('una canción sobre los desvelos del barrio', { modo: 'Modo 1 — Introspectivo', aprenderModo: true });
+  const m = r.eventos.find((e) => e.evento === 'am_context').datos.modo;
+  assert.ok(m.aprendidas.includes('desvelos'), JSON.stringify(m));
+  const nota = (await a.t.j('GET', '/api/b/p/note?name=' + encodeURIComponent('Modo 1 — Introspectivo'))).datos.text;
+  assert.match(nota, /palabras: profundo, capas, identidad, soledad, [^\n]*desvelos/);
+  // y la próxima vez se detecta solo
+  const sola = await a.msg('una canción sobre los desvelos del barrio');
+  assert.equal(sola.eventos.find((e) => e.evento === 'am_context').datos.modo.origen, 'detectado');
+  // sin la marca de aprender, elegir un modo no toca la nota
+  const antes = nota;
+  await a.msg('otra sobre los insomnios', { modo: 'Modo 1 — Introspectivo' });
+  assert.equal((await a.t.j('GET', '/api/b/p/note?name=' + encodeURIComponent('Modo 1 — Introspectivo'))).datos.text, antes);
+});
+
+test('lectura: un mensaje corto («sigue») se busca con lo anterior de la conversación y conserva las notas que se venían leyendo', async () => {
+  const p = espiar(() => ok('Va.'));
+  const a = await conChat({ proveedor: p });
+  const r1 = await a.msg('háblame de la anáfora y de cómo se usa');
+  assert.ok(r1.eventos.find((e) => e.evento === 'am_context').datos.leidas.some((l) => l.nombre === 'Anáfora'));
+  const r2 = await a.msg('sigue');
+  const l2 = r2.eventos.find((e) => e.evento === 'am_context').datos.leidas;
+  assert.ok(l2.some((l) => l.nombre === 'Anáfora' && l.motivo === 'busqueda'), 'Anáfora se sigue leyendo: ' + JSON.stringify(l2.map((l) => [l.nombre, l.motivo])));
+});

@@ -15,15 +15,18 @@ export async function modosDelCerebro(db, brainId) {
 }
 
 /**
+ * previas: nombres de las notas que leyó el turno anterior de la conversación (semillas suaves)
  * consulta: texto con el que se busca · modo: nombre de la nota del modo, o varios si se mezclan (o null) · anclas: nombres fijados a mano · profundidad: ligera|normal|profunda
  * entrena: ¿el modelo elegido entrena con lo que recibe? (si sí, las notas privadas no entran)
  */
-export async function armarContexto(env, db, brain, { consulta, modo = null, anclas = [], profundidad = 'normal', entrena = false }) {
+export async function armarContexto(env, db, brain, { consulta, modo = null, anclas = [], previas = [], profundidad = 'normal', entrena = false }) {
   const grafo = await grafoDe(db, brain.id);
   const pesos = new Map((await todas(db, 'select name, weight, updated from note_weights where brain_id = ?', brain.id)).map((p) => [p.name, desvanecido(p.weight, p.updated)]));
   const { resultados, significado } = consulta ? await buscar(env, db, brain, consulta, { n: 14, pesos }) : { resultados: [], significado: false };
   const existentes = new Set(grafo.nodes.map((n) => n.id));
   const semillas = new Map(resultados.map((r) => [r.nombre, Math.min(1, r.score)]));
+  // lo que se venía leyendo en la conversación pesa un poco aunque este mensaje sea corto («sigue con el segundo verso»)
+  for (const n of previas.slice(0, 5)) if (existentes.has(n) && !semillas.has(n)) semillas.set(n, 0.35);
   const pasajes = new Map(resultados.filter((r) => r.pasajes.length).map((r) => [r.nombre, r.pasajes]));
   const anclasOk = anclas.filter((a) => existentes.has(a));
   const modosOk = (Array.isArray(modo) ? modo : modo ? [modo] : []).filter((x) => existentes.has(x));
