@@ -146,7 +146,7 @@ export async function mensaje(env, ctx, db, brain, chatId, datos, { fetchFn = fe
   const base = brief ? [brief.titulo, brief.tema, brief.mood, brief.concepto, brief.referencia, brief.restricciones].filter(Boolean).join(' ') : texto;
   const res = resolverModo(modos, datos.modo ?? brief?.modo ?? null, base, brief ? null : previo);   // un encargo nuevo no hereda el modo del anterior; la charla sí
   // en una conversación (sin encargo) la duda de modo solo importa si piden escribir algo; si no, no se pregunta ni se ofrecen botones
-  if (!brief && res.origen === 'incierto' && !/\b(letra|cancion|verso|estribillo|coro|barra|rima|escrib|compon)/.test(fold(texto))) { res.origen = 'conversacion'; res.pregunta = false; }
+  if (!brief && res.origen === 'incierto' && !/\b(letra|cancion|verso|estribillo|coro|escrib\w*|compon\w*)s?\b/.test(fold(texto))) { res.origen = 'conversacion'; res.pregunta = false; }
   const mensajeUsuario = brief ? encargoTexto(brief, res) : texto;
   const consulta = brief ? consultaDeEncargo(brief, res.modos) : texto;
   const profundidad = ['ligera', 'normal', 'profunda'].includes(datos.profundidad) ? datos.profundidad : ajustes.profundidad;
