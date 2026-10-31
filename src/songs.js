@@ -83,7 +83,7 @@ export async function olvidar(db, brain) {
 /* ---------- el veredicto ---------- */
 
 const hoy = () => new Date().toISOString().slice(0, 10);
-async function asegurarNota(db, brain, nombre, carpeta, texto) {
+export async function asegurarNota(db, brain, nombre, carpeta, texto) {
   const f = await una(db, 'select name from notes where brain_id = ? and name = ?', brain.id, nombre);
   if (!f) await notas.crear(db, brain, { nombre, carpeta, texto });
 }

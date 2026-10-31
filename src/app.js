@@ -9,6 +9,7 @@ import * as significado from './meaning.js';
 import * as conexion from './connect.js';
 import * as canciones from './songs.js';
 import * as chat from './chat.js';
+import * as correcciones from './correcciones.js';
 import * as traslado from './transfer.js';
 import * as uso from './usage.js';
 import { grafoDe } from './graph.js';
@@ -97,6 +98,9 @@ r('POST', '/api/b/:slug/rules', B(async (c, b) => canciones.aceptarRegla(c.db, b
 r('GET', '/api/b/:slug/chats', B(async (c, b) => ({ conversaciones: await chat.listar(c.db, b.id) })));
 r('POST', '/api/b/:slug/chats', B(async (c, b) => ({ conversacion: await chat.crear(c.db, b, await c.cuerpo()) })));
 r('GET', '/api/b/:slug/chats/:id', B(async (c, b) => chat.leer(c.db, b, c.p.id)));
+r('PATCH', '/api/b/:slug/chats/:id/messages/:mid', B(async (c, b) => correcciones.corregirMensaje(c.db, b, c.p.id, c.p.mid, await c.cuerpo())));
+r('POST', '/api/b/:slug/learn/propose', B(async (c, b) => correcciones.proponer(c.env, c.db, b, await c.cuerpo(), { fetchFn: c.fetchFn, esperas: c.esperas, tiempos: c.tiempos })));
+r('POST', '/api/b/:slug/learn/apply', B(async (c, b) => correcciones.aplicar(c.db, b, await c.cuerpo())));
 r('PATCH', '/api/b/:slug/chats/:id', B(async (c, b) => chat.renombrar(c.db, b, c.p.id, (await c.cuerpo()).title)));
 r('DELETE', '/api/b/:slug/chats/:id', B(async (c, b) => chat.borrar(c.db, b, c.p.id)));
 r('POST', '/api/b/:slug/chats/:id/message', B(async (c, b) => chat.mensaje(c.env, c.ec, c.db, b, c.p.id, await c.cuerpo(), { fetchFn: c.fetchFn, esperas: c.esperas, tiempos: c.tiempos })));

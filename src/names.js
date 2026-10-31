@@ -4,6 +4,7 @@ export const NOTAS = {
   bitacora: 'Bitácora de errores',
   puntuaciones: 'Puntuaciones reales',
   protocolo: 'Cómo escribe este cerebro',
+  correcciones: 'Correcciones del artista',
 };
 export const CARPETAS = {
   meta: '00-Meta',

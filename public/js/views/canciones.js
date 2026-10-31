@@ -3,6 +3,8 @@ import { h, poner, vaciar, icono, aviso, fallo, dialogo, pedir, confirmar, copia
 import { S, api, ir, irANota, invalidarGrafo, recargarMeta } from '../store.js';
 import { parsear } from '../lyric.js';
 import { vistaDeLetra, mdEl, abrirParaSuno, copiarTextoLimpio } from '../letra-ui.js';
+import { ofrecerAprender } from '../aprender.js';
+import { textoLimpio } from '../formato.js';
 
 const ESTADO = { borrador: ['Borrador', ''], aprobada: ['Aprobada', 'good'], rechazada: ['Rechazada', 'bad'] };
 const DIAGNOSTICO = [
@@ -65,7 +67,7 @@ export async function montar(el, { param }) {
     const t = h('input', { type: 'text', value: c.title }), x = h('textarea', { rows: 18, value: c.text, style: { fontFamily: 'var(--mono)', fontSize: '13.5px', lineHeight: 1.6 } });
     const d = dialogo({ titulo: 'Editar canción', ancho: true, cuerpo: h('div.stack', h('div.field', h('label', 'Título'), t), h('div.field', h('label', 'Letra'), x, h('span.hint', 'Secciones entre corchetes: [VERSO 1], [CORO]… y «## Notas técnicas» al final.'))), acciones: [
       { texto: 'Cancelar', tipo: 'ghost', onclick: () => { abrir(c.id); } },
-      { texto: 'Guardar cambios', tipo: 'primary', onclick: async () => { await A.patch(`songs/${encodeURIComponent(c.id)}`, { titulo: t.value, texto: x.value }); await cargar(); aviso('Guardada.', 'good', 1600); abrir(c.id); } }] });
+      { texto: 'Guardar cambios', tipo: 'primary', onclick: async () => { await A.patch(`songs/${encodeURIComponent(c.id)}`, { titulo: t.value, texto: x.value }); await cargar(); aviso('Guardada.', 'good', 1600); abrir(c.id); ofrecerAprender({ antes: textoLimpio(parsear(c.text).versiones[0]), despues: textoLimpio(parsear(x.value).versiones[0]), titulo: t.value, modo: c.mode || '' }); } }] });
     return d;
   }
 
