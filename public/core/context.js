@@ -6,9 +6,15 @@
 //   3 · ancladas .. las que el artista fijó a mano.
 //   4 · búsqueda .. lo que las palabras (BM25) y el significado (vectores) encontraron para este encargo.
 //   5 · vecinas ... lo que despiertan las anteriores a través de las sinapsis (activación en 2 saltos).
+//
+// Las canciones con `origen: generada` (las que escribió un sistema, no el artista) NO son evidencia de su estilo: no se leen como ejemplo
+// (salvo que el artista las ancle a mano). Siguen en el cerebro y se pueden consultar por nombre.
 import { activar, adyacencia } from './graph.js';
 import { resumen, leerCabecera } from './text.js';
 import { multiplicador } from './hebb.js';
+
+/** ¿Es una canción generada por un sistema (no escrita por el artista)? Marca `origen: generada` en su cabecera. */
+export const esGenerada = (texto) => leerCabecera(texto).fm.origen === 'generada';
 
 export const PROFUNDIDAD = { ligera: 14_000, normal: 30_000, profunda: 60_000 };
 const MAX_FIJA = 8_000, MAX_COMPLETA = 3_200, MAX_RESUMEN = 360;
@@ -60,6 +66,7 @@ export function planear({ notas, grafo, semillas = new Map(), anclas = [], modo 
   const recuperadas = [];
   for (const c of candidatas) {
     const n = notas.get(c.nombre);
+    if (esGenerada(n.texto) && c.motivo !== 'anclada') continue;   // no es su voz: no entra como ejemplo
     if (n.tipo === 'moc' && c.motivo !== 'anclada') continue; // un índice es un mapa, no contenido
     if (!permitido(n)) { omitidas.privadas.push(n.nombre); continue; }
     const cuerpo = leerCabecera(n.texto).cuerpo.trim();

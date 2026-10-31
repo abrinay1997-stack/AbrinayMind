@@ -200,3 +200,18 @@ test('quality: rotos, huérfanas, por revisar, sin tipo y duplicadas', () => {
   assert.equal(r.duplicadas.length, 1); assert.deepEqual([r.duplicadas[0].a, r.duplicadas[0].b], ['D1', 'D2']);
   assert.equal(repetidas([{ nombre: 'x', texto: 'corto' }]).length, 0);
 });
+
+test('contexto: una canción marcada «origen: generada» no entra como ejemplo de estilo, salvo que el artista la ancle', async () => {
+  const { planear } = await import('../public/core/context.js');
+  const nota = (nombre, texto, extra = {}) => ({ nombre, carpeta: '40-Canciones', texto, siempre: false, privado: false, tipo: 'cancion', ...extra });
+  const notas = new Map([
+    ['Mía', nota('Mía', '---\ntipo: cancion\norigen: original\n---\n# Mía\n\nUna letra inventada del artista.')],
+    ['Hecha por el sistema', nota('Hecha por el sistema', '---\ntipo: cancion\norigen: generada\n---\n# Hecha por el sistema\n\nOtra letra inventada, pero escrita por una máquina.')],
+  ]);
+  const grafo = { nodes: [{ id: 'Mía' }, { id: 'Hecha por el sistema' }], links: [[0, 1]], mentions: [], meaning: [], learned: [] };
+  const semillas = new Map([['Mía', 0.9], ['Hecha por el sistema', 0.95]]);
+  const sin = planear({ notas, grafo, semillas });
+  assert.deepEqual(sin.recuperadas.map((b) => b.nombre), ['Mía']);
+  const anclada = planear({ notas, grafo, semillas, anclas: ['Hecha por el sistema'] });
+  assert.ok(anclada.recuperadas.some((b) => b.nombre === 'Hecha por el sistema'), 'si el artista la ancla a mano, sí entra');
+});
