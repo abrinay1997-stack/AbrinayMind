@@ -129,7 +129,8 @@ test('sin herramientas: con el ajuste apagado, en el constructor de letras y con
   await a.t.j('PUT', '/api/settings', { escritura_ia: false });
   await a.msg('hola otra vez'); assert.equal(a.proveedor.cuerpos[1].tools, undefined, 'apagado en Ajustes');
   await a.t.j('PUT', '/api/settings', { escritura_ia: true });
-  await a.msg('', { fn: 'letra', brief: { titulo: 'x' } }); assert.equal(a.proveedor.cuerpos[2].tools, undefined, 'escribir letras no modifica el cerebro');
+  await a.msg('', { fn: 'letra', brief: { titulo: 'x' } });
+  assert.deepEqual(a.proveedor.cuerpos[2].tools.map((t) => t.name).sort(), ['analizar_letra', 'buscar_notas', 'leer_nota', 'listar_notas'], 'escribir letras: solo herramientas de LECTURA, nunca modificar el cerebro');
   assert.match(a.proveedor.cuerpos[1].system.map((b) => b.text).join(''), /Si el artista te explica conceptos/);
   assert.match(a.proveedor.cuerpos[0].system.map((b) => b.text).join(''), /CANAL EN LOS DOS SENTIDOS/);
 });
@@ -184,4 +185,39 @@ test('REPRODUCCIÓN: un error sin ningún texto tampoco borra la respuesta: qued
   const bot = ms.filter((m) => m.role === 'assistant').at(-1);
   assert.ok(bot, 'quedó la respuesta con el error');
   assert.match(bot.meta.error, /saturado/);
+});
+
+const BORRADOR = '[VERSO 1]\nCamino por la calle sin mirar atrás\nCargando en la espalda lo que no se va\nHablo con el miedo y me dice que no hay más\nSigo de memoria el mapa de mi hogar\n\n[CORO]\nNo hay vuelta atrás\nNo hay vuelta atrás\nNo hay vuelta atrás\nSolo sigo mi lugar';
+test('letra: el modelo analiza su borrador antes de entregar; el borrador no se guarda ni se muestra; la versión final sí', async () => {
+  const a = await conCerebro((cuerpo, n) => {
+    if (n === 0) return { texto: 'BORRADOR-QUE-NO-DEBE-QUEDAR', usos: [{ name: 'analizar_letra', input: { texto: BORRADOR } }] };
+    return { texto: '[VERSO 1]\nVersión final inventada de prueba\n\n## Notas técnicas\nMedido: estimaciones.' };
+  });
+  const r = await a.msg('', { fn: 'letra', brief: { titulo: 'Ruta', tema: 'caminar' } });
+  assert.ok(r.eventos.some((e) => e.evento === 'am_descartar'), 'se avisa al navegador de que descarte el borrador');
+  assert.equal(a.proveedor.cuerpos.length, 2);
+  const resultado = resultadosDe(a.proveedor.cuerpos[1])[0].content;
+  assert.match(resultado, /8 versos en 2 secciones/); assert.match(resultado, /Anáforas: 1/); assert.match(resultado, /Son estimaciones/); assert.doesNotMatch(resultado, /is_error/);
+  const m = await a.ultimo();
+  assert.match(m.content, /Versión final inventada/); assert.doesNotMatch(m.content, /BORRADOR-QUE-NO-DEBE-QUEDAR/, 'lo escrito antes de analizar es borrador: no se guarda');
+  assert.equal(m.meta.cambios, undefined, 'al escribir letras no hay cambios en el cerebro');
+});
+
+test('letra: las herramientas de escritura no existen para el modelo escribiendo (aunque las pida)', async () => {
+  const a = await conCerebro((cuerpo, n) => (n === 0 ? { usos: [{ name: 'borrar_nota', input: { nombre: 'Niebla' } }] } : { texto: 'Listo.' }));
+  await a.msg('', { fn: 'letra', brief: { titulo: 'x' } });
+  const res = resultadosDe(a.proveedor.cuerpos[1])[0];
+  assert.ok(res.is_error && /No existe la herramienta/.test(res.content));
+  assert.equal((await a.nota('Niebla')).status, 200, 'la nota sigue ahí');
+});
+
+test('contexto: las medidas de los ejemplos del modo (sílabas, rima) llegan al modelo y a la herramienta de análisis', async () => {
+  const verso = (i) => ['Camino por la calle sin mirar atrás', 'Cargando en la espalda lo que no se va', 'Hablo con el miedo y me dice que no hay más', 'Sigo de memoria el mapa de mi hogar'][i % 4];
+  const letra = Array.from({ length: 12 }, (_, i) => verso(i)).join('\n');
+  const a = await conCerebro((cuerpo, n) => (n === 0 ? { usos: [{ name: 'analizar_letra', input: { texto: BORRADOR } }] } : { texto: 'Ok.' }));
+  await a.t.j('POST', '/api/b/p/import/notas', { notas: [{ nombre: 'Ejemplo propio', carpeta: '40', texto: `---\ntipo: cancion\nautoria: Abrinay (original)\nmodo: [[Modo 1 — Introspectivo]]\n---\n# Ejemplo propio\n\n## Letra\n\n${letra}\n\n## Medidas\n\nx\n\nModo: [[Modo 1 — Introspectivo]]` }] });
+  const r = await a.msg('', { fn: 'letra', brief: { titulo: 'Ruta', tema: 'caminar', modo: 'Modo 1 — Introspectivo' } });
+  assert.match(a.proveedor.cuerpos[0].system[1].text, /Medidas de sus ejemplos \(estimadas por máquina\): «Ejemplo propio»: mediana de 12\.?5? sílabas/);
+  assert.ok(r.eventos.find((e) => e.evento === 'am_context').datos.modo.medidas?.[0]?.nombre === 'Ejemplo propio');
+  assert.match(resultadosDe(a.proveedor.cuerpos[1])[0].content, /Sus ejemplos \(estimado\): «Ejemplo propio» mediana/);
 });

@@ -6,6 +6,7 @@ import { flujo } from '../api.js';
 import { parsear, primeraLinea } from '../lyric.js';
 import { vistaDeLetra, abrirParaSuno, copiarTextoLimpio } from '../letra-ui.js';
 import { ofrecerAprender } from '../aprender.js';
+import { tarjetaRevision } from '../revision.js';
 import { textoLimpio } from '../formato.js';
 import { Graph3D } from '../graph3d.js';
 
@@ -137,14 +138,15 @@ export async function montar(el, { param }) {
 
   const opcionesMd = { existe: (x) => S.nombres.includes(x), alAbrir: (n) => irANota(n) };
   function bloquesDeLetra(texto, m, { enVivo = false } = {}) {
-    return vistaDeLetra(texto, { ...opcionesMd, enVivo, pie: m?.id ? (v, p) => h('div.row.wrap', { style: { gap: '6px' } },
+    return vistaDeLetra(texto, { ...opcionesMd, enVivo, pie: m?.id ? (v, p) => h('div.stack', { style: { gap: '8px' } }, h('div.row.wrap', { style: { gap: '6px' } },
       h('button.btn.small', { onclick: () => guardarCancion(m, v, p.versiones.length > 1) }, icono('songs'), 'Guardar como canción'),
       h('button.btn.small.solo-escritorio', { onclick: () => corregirVersion(m, v) }, icono('edit'), 'Corregir'),
       h('button.btn.small.solo-escritorio', { onclick: () => abrirParaSuno({ titulo: m.meta?.brief?.titulo, version: v, brief: m.meta?.brief }) }, icono('upload'), 'Para Suno'),
       h('button.btn.ghost.small.solo-escritorio', { onclick: () => copiarTextoLimpio(v, m.meta?.brief?.titulo) }, icono('copy'), 'Copiar letra'),
       h('button.btn.small.solo-escritorio', { onclick: () => pulir(m, v) }, icono('sparkle'), 'Pulir con mis reglas'),
       h('button.btn.ghost.small.solo-escritorio', { onclick: () => refinar(v) }, icono('edit'), 'Refinar'),
-      h('button.btn.small.solo-movil', { 'aria-label': 'Más acciones de esta versión', 'aria-haspopup': 'dialog', onclick: () => menuVersion(m, v) }, icono('more'))) : null });
+      h('button.btn.small.solo-movil', { 'aria-label': 'Más acciones de esta versión', 'aria-haspopup': 'dialog', onclick: () => menuVersion(m, v) }, icono('more'))),
+      tarjetaRevision(v, { medidas: m.meta?.modo?.medidas || [], alCorregir: (marcas) => corregirMarcado(m, v, marcas) })) : null });
   }
 
   /** El artista corrige la letra ahí mismo: se guarda en la conversación (el siguiente turno parte de ESA letra) y se le ofrece enseñarle al cerebro lo que cambió. */
@@ -166,6 +168,8 @@ export async function montar(el, { param }) {
   /** «Pulir con mis reglas»: el cerebro revisa la letra contra las reglas de oro y lo aprendido, dice qué incumple y entrega la versión corregida (en el mismo modo). */
   const PULIR = 'Pule esta letra contra mis reglas. 1) Revísala línea por línea contra las reglas de oro, las reglas aprendidas y el modo. 2) Di en una línea por cada regla que incumple (solo las que incumple) dónde y por qué. 3) Entrega la versión corregida completa, cambiando solo lo necesario: no toques lo marcado NO TOCAR ni la idea central.\n\nLETRA:\n';
   const pulir = (m, v) => { if (!ctrl) enviar({ texto: PULIR + v.crudo, fn: 'letra', modo: m.meta?.modo?.notas?.length ? m.meta.modo.notas : m.meta?.modo?.nota || null }); };
+  /** «Corregir lo marcado»: se le pasan al cerebro los hallazgos medidos para que toque solo eso. */
+  const corregirMarcado = (m, v, marcas) => { if (!ctrl) enviar({ texto: `Corrige esta letra SOLO en lo que marca la revisión (medida por máquina, estimada); no cambies lo demás ni lo marcado NO TOCAR:\n${marcas.map((x) => `- ${x}`).join('\n')}\n\nLETRA:\n${v.crudo}`, fn: 'letra', modo: m.meta?.modo?.notas?.length ? m.meta.modo.notas : m.meta?.modo?.nota || null }); };
   const refinar = (v) => { entrada.value = `Refina la ${v.etiqueta ? 'versión ' + v.etiqueta : 'letra'}: `; ajustarAlto(); entrada.focus(); };
   function menuVersion(m, v) {
     const fila = (ic, t, fn) => h('button.list-row', { style: { textAlign: 'left', width: '100%' }, onclick: () => { d.cerrar(); fn(); } }, icono(ic), h('div.grow', h('b', t)));
@@ -321,6 +325,7 @@ export async function montar(el, { param }) {
           poner(leida, cajaLeida(i)); for (const a of i.avisos || []) aviso(a, '', 6000); marcarMapa(i, true);
         },
         texto(t) { acumulado += t; estado('Escribiendo'); orbe.classList.remove('think'); if (!pendiente) pendiente = requestAnimationFrame(pintarCuerpo); },
+        descartar() { acumulado = ''; if (!pendiente) pendiente = requestAnimationFrame(pintarCuerpo); },
         paso(d) { estado((d.texto || 'Trabajando').replace(/…$/, '')); },
         pensando() { estado('Pensando'); },
         cambios(d) { poner(cambiosEl, d.cambios?.length ? tarjetaCambios(d.cambios, null) : null); abajo(); },

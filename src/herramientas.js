@@ -8,8 +8,11 @@ import { NOTAS } from './names.js';
 import * as notas from './notes.js';
 import { buscar } from './search.js';
 import { aceptarRegla } from './songs.js';
+import { analizarLetra } from '../public/core/prosodia.js';
 import { fold, enlaces as enlacesDe, nombreValido, carpetaValida, resumen } from '../public/core/text.js';
 
+/** Las herramientas que no modifican nada: son las únicas disponibles al escribir una letra. */
+export const SOLO_LECTURA = new Set(['buscar_notas', 'leer_nota', 'listar_notas', 'analizar_letra']);
 export const TIPOS = ['concepto', 'idea', 'estructura', 'metrica', 'tecnica', 'tema', 'recurso', 'referencia'];
 export const TOPES = { escrituras: 40, borrados: 25, lecturas: 8, lecturaLetras: 6000, antes: 20_000 };
 const PROTEGIDAS = new Set(Object.values(NOTAS).map(fold));
@@ -20,6 +23,7 @@ export const HERRAMIENTAS = [
   { name: 'buscar_notas', description: 'Busca en el cerebro las notas que más se relacionan con un texto (por palabras y por significado). Úsala antes de modificar algo para encontrar la nota correcta.', input_schema: { type: 'object', properties: { consulta: { type: 'string' } }, required: ['consulta'] } },
   { name: 'leer_nota', description: 'Lee el texto completo de una nota y a qué notas enlaza y desde cuáles la enlazan.', input_schema: { type: 'object', properties: { nombre: nombreP }, required: ['nombre'] } },
   { name: 'listar_notas', description: 'Lista nombres de notas (máximo 80), opcionalmente de una carpeta o cuyo nombre contenga un texto.', input_schema: { type: 'object', properties: { carpeta: { type: 'string' }, contiene: { type: 'string' } } } },
+  { name: 'analizar_letra', description: 'Analiza una letra con prosodia del español: sílabas por verso (estimadas, con sinalefa), rimas (consonante, asonante, multisílaba), esquema por sección, anáforas, finales repetidos y versos que se salen de lo normal. Compara con las medidas de los ejemplos del artista si las hay. Úsala con tu borrador ANTES de entregarlo.', input_schema: { type: 'object', properties: { texto: { type: 'string', description: 'La letra completa, con secciones entre corchetes ([VERSO 1], [CORO]…).' } }, required: ['texto'] } },
   { name: 'salud_del_cerebro', description: 'Revisa el cerebro: enlaces rotos, notas sin ninguna conexión (huérfanas) y notas sin tipo. Úsala para «reconecta lo suelto» o «limpia».', input_schema: { type: 'object', properties: {} } },
   { name: 'crear_nota', description: 'Crea una nota nueva (concepto, idea, estructura, métrica, técnica, tema…). Un tema por nota; conéctala con notas existentes. No copies letras de otros artistas: de un referente solo análisis y métricas.', input_schema: { type: 'object', properties: { nombre: nombreP, carpeta: { type: 'string', description: 'Carpeta existente o nueva (hasta 3 niveles). Vacía = sin carpeta.' }, tipo: { type: 'string', enum: TIPOS }, texto: { type: 'string', description: 'Contenido en Markdown.' }, enlaces: { type: 'array', items: { type: 'string' }, description: 'Nombres EXACTOS de notas existentes con las que conectar.' } }, required: ['nombre', 'texto'] } },
   { name: 'ampliar_nota', description: 'Añade texto al final de una nota (o de una sección) sin tocar lo que ya decía. Prefiérela a reescribir.', input_schema: { type: 'object', properties: { nombre: nombreP, texto: { type: 'string' }, seccion: { type: 'string', description: 'Título de la sección donde añadir (se crea si falta). Opcional.' } }, required: ['nombre', 'texto'] } },
@@ -41,7 +45,7 @@ const falla = (texto) => ({ texto, error: true });
  * El ejecutor de un turno: guarda los cambios hechos (con lo necesario para deshacerlos) y aplica los topes.
  * → { ejecutar(nombre, entrada) → { texto, error? }, cambios }
  */
-export function crearEjecutor({ env, db, brain, cambios = [] }) {
+export function crearEjecutor({ env, db, brain, cambios = [], medidas = [], soloLectura = false }) {
   const cuenta = { escrituras: 0, borrados: 0, lecturas: 0 };
   const lee = () => { if (++cuenta.lecturas > TOPES.lecturas) throw new HttpError(429, `Ya hiciste ${TOPES.lecturas} lecturas en este mensaje: contesta al artista con lo que tienes.`); };
   const POR = 'chat-ia';
@@ -69,6 +73,19 @@ export function crearEjecutor({ env, db, brain, cambios = [] }) {
       lee();
       const l = await notas.listar(db, brain.id, { carpeta: String(carpeta || ''), q: String(contiene || '') });
       return `${l.length} notas${l.length > 80 ? ' (primeras 80)' : ''}:\n` + l.slice(0, 80).map((f) => `- ${f.name} [${f.folder || 'sin carpeta'}${f.tipo ? ' · ' + f.tipo : ''}]`).join('\n');
+    },
+    async analizar_letra({ texto }) {
+      lee();
+      const a = analizarLetra(String(texto ?? '').slice(0, 20_000)); const r = a.resumen;
+      if (!r.versos) return 'No encontré versos en ese texto. Pásame la letra con sus secciones entre corchetes.';
+      const fila = (s) => `- ${s.nombre}: ${s.versos.length} versos, esquema ${s.esquema}, mediana ${s.mediana} sílabas${s.anaforas.length ? `, anáfora «${s.anaforas.map((x) => `${x.inicio} ×${x.versos}`).join('», «')}»` : ''}`;
+      const vara = medidas.length ? `\nSus ejemplos (estimado): ${medidas.map((m) => `«${m.nombre}» mediana ${m.mediana} (rango ${m.min}–${m.max}), rima ${Math.round(m.densidadRima * 100)} %`).join(' · ')}` : '';
+      return [`${r.versos} versos en ${a.secciones.length} secciones. Sílabas métricas por verso (estimadas): mediana ${r.mediana}, rango ${r.min}–${r.max}, desviación ${r.desviacion}.${vara}`,
+        `Rima: ${Math.round(r.densidadRima * 100)} % de los versos riman con uno cercano (consonantes ${r.tiposRima.consonante}, asonantes ${r.tiposRima.asonante}, multisílabas ${r.tiposRima.multisilabica}).`,
+        `Anáforas: ${r.anaforas}. Líneas repetidas: ${r.versosRepetidos}.${r.finalesRepetidos.length ? ` Finales que se repiten: ${r.finalesRepetidos.map((f) => `«${f.palabra}» ×${f.veces}`).join(', ')}.` : ''}`,
+        'Por sección:', ...a.secciones.map(fila),
+        r.atipicos.length ? `Versos que se salen de la sección: ${r.atipicos.map((x) => `[${x.seccion} v${x.verso}] ${x.metricas} sílabas (la sección va por ${x.mediana}): «${recortar(x.texto, 70)}»`).join(' | ')}` : 'Ningún verso se sale mucho de su sección.',
+        'Son estimaciones: el rap rompe reglas de sinalefa y acento.'].join('\n');
     },
     async salud_del_cerebro() {
       lee();
@@ -164,8 +181,9 @@ export function crearEjecutor({ env, db, brain, cambios = [] }) {
 
   return {
     cambios,
+    permite: (nombre) => !soloLectura || SOLO_LECTURA.has(nombre),
     async ejecutar(nombre, entrada) {
-      const f = acciones[nombre];
+      const f = (soloLectura && !SOLO_LECTURA.has(nombre)) ? null : acciones[nombre];
       if (!f) return falla(`No existe la herramienta «${recortar(String(nombre), 40)}».`);
       try { return { texto: recortar(String(await f(entrada && typeof entrada === 'object' ? entrada : {})), 8000) }; }
       catch (e) { if (e instanceof HttpError) return falla(e.message); throw e; }

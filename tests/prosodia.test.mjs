@@ -1,7 +1,7 @@
 // Prosodia del español: sílabas y acento, sílabas de un verso (con sinalefa), rimas (consonante, asonante, multisílaba), esquema y anáforas. Todo con texto inventado.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { silabas, silabasDeVerso, rimaDe, comparaRima, partirLetra, analizarLetra } from '../public/core/prosodia.js';
+import { silabas, silabasDeVerso, rimaDe, comparaRima, partirLetra, analizarLetra, letraDeNota } from '../public/core/prosodia.js';
 
 const corta = (w) => silabas(w).silabas.join('-');
 test('sílabas: diptongos, hiatos, grupos de consonantes y «qu/gu»', () => {
@@ -45,4 +45,22 @@ test('análisis: esquema de rima, anáfora, finales repetidos y versos atípicos
   assert.match(a.secciones[0].esquema, /^[A-Z-]{4}$/);
   assert.ok(a.resumen.mediana >= 5 && a.resumen.max >= 12);
   assert.equal(analizarLetra('').resumen.versos, 0);
+});
+
+test('robustez: palabras sin vocales, signos y versos vacíos no rompen nada', () => {
+  assert.equal(rimaDe('hmm'), null); assert.equal(comparaRima('shh', 'hmm'), null); assert.equal(comparaRima('', 'casa'), null);
+  const a = analizarLetra('[VERSO]\nHmm\nShh... ¿¡qué!?\n...\n\n123 456\nSigo');
+  assert.ok(a.resumen.versos >= 3); assert.doesNotThrow(() => analizarLetra('# solo titulo\n---\n'));
+});
+test('letra de una nota de canción: aísla «## Letra» y reconoce etiquetas sueltas como «verse»', () => {
+  const nota = '---\ntipo: cancion\n---\n# X\n\nIntro de análisis que no es letra.\n\n## Letra\n\nverse\nUna línea inventada de prueba\nOtra línea inventada de ensayo\nchorus\nEstribillo inventado de muestra\n\n## Medidas\n\nmediana 12';
+  const t = letraDeNota(nota);
+  assert.doesNotMatch(t, /Intro de análisis|Medidas/);
+  assert.deepEqual(partirLetra(t).map((x) => [x.nombre, x.versos.length]), [['verse', 2], ['chorus', 1]]);
+  assert.equal(letraDeNota('sin sección de letra'), 'sin sección de letra');
+});
+test('rima: solo se busca entre versos cercanos (si no, una letra larga «rimaría» toda con todo)', () => {
+  const versos = ['Camino por la calle', 'busco la luz', 'bajo el sol', 'hasta el fin', 'sin el pan', 'dulce como miel', 'Encuentro en el detalle'];
+  const a = analizarLetra('[X]\n' + versos.join('\n'));
+  assert.equal(a.secciones[0].pares.length, 0, 'calle y detalle riman pero están a 6 versos');
 });

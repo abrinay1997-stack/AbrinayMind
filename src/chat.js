@@ -142,7 +142,10 @@ export async function mensaje(env, ctx, db, brain, chatId, datos, { fetchFn = fe
   const { modelo, de, avisos } = elegirModelo(env, ajustes, { fn, pedido: datos.model || null });
   await uso.vigilarTope(db, ajustes);
   // el chat libre es un canal en los dos sentidos: con modelos Claude (que no entrenan) puede leer Y modificar el cerebro con herramientas
-  const conHerramientas = fn === 'chat' && ajustes.escritura_ia !== false && modelo.proveedor === 'anthropic' && !modelo.entrena;
+  // al escribir una letra solo tiene herramientas de LECTURA (consultar notas y analizar su borrador): nunca modifica el cerebro mientras escribe
+  const puedeHerramientas = modelo.proveedor === 'anthropic' && !modelo.entrena;
+  const modoHerramientas = !puedeHerramientas ? false : fn === 'chat' && ajustes.escritura_ia !== false ? 'todas' : fn === 'letra' ? 'lectura' : false;
+  const conHerramientas = !!modoHerramientas;
 
 
   // el historial reciente (de él sale también el modo que ya traía la conversación)
@@ -168,7 +171,7 @@ export async function mensaje(env, ctx, db, brain, chatId, datos, { fetchFn = fe
 
   const contexto = await armarContexto(env, db, brain, { consulta, modo: res.modos.map((m) => m.nota), anclas, previas, profundidad, entrena: !!modelo.entrena });
   const modoTexto = res.modos.length ? (res.origen === 'detectado' ? `detectado: ${res.motivo}` : res.origen === 'continua' ? 'sigue el de la conversación' : 'elegido por el artista') : '';
-  const sistema = [{ text: sistemaFijo(brain, contexto.plan.fijas, { herramientas: conHerramientas }), cache: true }, { text: sistemaVariable({ modos, modosSel: res.modos, libre: res.origen === 'libre', conversacion: res.origen === 'conversacion', modoTexto, recuperadas: contexto.plan.recuperadas }) }];
+  const sistema = [{ text: sistemaFijo(brain, contexto.plan.fijas, { herramientas: modoHerramientas }), cache: true }, { text: sistemaVariable({ modos, modosSel: res.modos, libre: res.origen === 'libre', conversacion: res.origen === 'conversacion', modoTexto, recuperadas: contexto.plan.recuperadas, medidas: contexto.medidas }) }];
 
   const mensajes = [...previos.map((m) => ({ role: m.role, content: m.content })), { role: 'user', content: mensajeUsuario }];
   while (mensajes.length && mensajes[0].role !== 'user') mensajes.shift();
@@ -179,7 +182,7 @@ export async function mensaje(env, ctx, db, brain, chatId, datos, { fetchFn = fe
 
   const info = {
     modelo: { id: modelo.id, nombre: modelo.nombre, entrena: !!modelo.entrena, de }, avisos,
-    modo: res.modos.length ? { nombre: nombresDeModos(res), nota: res.modo.nota, notas: res.modos.map((m) => m.nota), origen: res.origen, ...(modoAprendido.length ? { aprendidas: modoAprendido } : {}) } : { nombre: res.origen === 'libre' ? 'Libre' : null, origen: res.origen, pregunta: res.pregunta, sugerido: res.sugerido?.nota },
+    modo: res.modos.length ? { nombre: nombresDeModos(res), nota: res.modo.nota, notas: res.modos.map((m) => m.nota), origen: res.origen, ...(modoAprendido.length ? { aprendidas: modoAprendido } : {}), ...(contexto.medidas?.length ? { medidas: contexto.medidas } : {}) } : { nombre: res.origen === 'libre' ? 'Libre' : null, origen: res.origen, pregunta: res.pregunta, sugerido: res.sugerido?.nota },
     fijas: contexto.fijas, leidas: contexto.leidas, omitidas: contexto.omitidas, significado: contexto.significado, profundidad,
   };
 
@@ -202,7 +205,7 @@ export async function mensaje(env, ctx, db, brain, chatId, datos, { fetchFn = fe
     const acum = acumulador(); let espaciado = false;
     let lector = lectorDeEventos(), upstream = null, reloj;
     const maxTokens = tokensDe(fn, brief), esfuerzo = esfuerzoDe(ajustes.pensamiento, fn);
-    const ejecutor = conHerramientas ? crearEjecutor({ env, db, brain, cambios }) : null;
+    const ejecutor = conHerramientas ? crearEjecutor({ env, db, brain, cambios, medidas: contexto.medidas, soloLectura: modoHerramientas === 'lectura' }) : null;
     const conversacion = mensajes.map((m) => ({ ...m }));
     // lee del proveedor con vigilancia: si pasa `inactividad` ms sin recibir nada, se da por colgado (y no se queda el spinner para siempre)
     const leer = () => Promise.race([upstream.read(), new Promise((_, no) => { reloj = setTimeout(() => no(new HttpError(504, `${modelo.nombre} dejó de contestar a mitad de la respuesta.`)), tiempos?.inactividad ?? INACTIVIDAD); })]).finally(() => clearTimeout(reloj));
@@ -213,7 +216,7 @@ export async function mensaje(env, ctx, db, brain, chatId, datos, { fetchFn = fe
         for (let ronda = 0; ; ronda++) {
           lector = lectorDeEventos();
           const ultima = ronda >= MAX_RONDAS - 1;   // en la última vuelta se le obliga a contestar en texto con lo que ya leyó
-          const res2 = await llamarEnFlujo(env, modelo, { sistema, mensajes: conversacion, maxTokens, esfuerzo, ...(ejecutor ? { herramientas: HERRAMIENTAS, sinHerramientas: ultima } : {}) }, { fetchFn, esperas, tiempos });
+          const res2 = await llamarEnFlujo(env, modelo, { sistema, mensajes: conversacion, maxTokens, esfuerzo, ...(ejecutor ? { herramientas: HERRAMIENTAS.filter((h) => ejecutor.permite(h.name)), sinHerramientas: ultima } : {}) }, { fetchFn, esperas, tiempos });
           upstream = res2.body.getReader();
           if (ronda > 0 && acum.texto && !espaciado) { espaciado = true; await w.write(enc.encode(`event: content_block_delta\ndata: ${JSON.stringify({ type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: '\n\n' } })}\n\n`)); }
           for (;;) {
@@ -224,7 +227,9 @@ export async function mensaje(env, ctx, db, brain, chatId, datos, { fetchFn = fe
           const e = lector.estado;
           if (e.error) throw new Error(e.error);
           const pedidas = ejecutor && e.parada === 'tool_use' ? e.herramientas : [];
-          acum.sumar(e); if (e.texto.trim()) espaciado = false;
+          if (modoHerramientas === 'lectura' && pedidas.length) { acum.sumar({ texto: '', uso: e.uso, parada: e.parada, fin: e.fin }); await w.write(sse('am_descartar', {})); }   // lo escrito antes de analizar es borrador: no se guarda
+          else acum.sumar(e);
+          if (e.texto.trim() && !(modoHerramientas === 'lectura' && pedidas.length)) espaciado = false;
           if (!pedidas.length) break;
           if (ultima) { acum.tope = true; break; }   // (con tool_choice none no debería pedir más; por si acaso)
           // el modelo pidió herramientas: se ejecutan y se le devuelve el resultado para que siga

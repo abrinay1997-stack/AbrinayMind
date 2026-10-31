@@ -110,7 +110,9 @@ function fonetica(s) {
 export function rimaDe(palabra) {
   const w = limpiar(palabra);
   if (!w) return null;
-  const s = silabas(w), nu = nucleos(w), n = nu[s.tonica] || nu[nu.length - 1];
+  const s = silabas(w), nu = nucleos(w);
+  if (!nu.length) return null;   // onomatopeyas sin vocal («hmm», «shh»): no riman
+  const n = nu[s.tonica] || nu[nu.length - 1];
   // la vocal tónica: la que lleva tilde; si no, en un diptongo la fuerte (o la segunda débil)
   const grupo = [...w.slice(n.ini, n.fin + 1)]; let k = grupo.findIndex((c) => /[áéíóú]/.test(c));
   if (k < 0 && grupo.length > 1) { k = grupo.findIndex((c) => FUERTES.includes(c)); if (k < 0) k = grupo.length - 1; }
@@ -139,7 +141,18 @@ export function comparaRima(a, b) {
 /* ---------- la letra ---------- */
 
 const RE_SECCION = /^\s*\[([^\]]{1,40})\]\s*$/;
+const RE_ETIQUETA = /^\s*\(?(intro|verse|verso|chorus|coro|estribillo|bridge|puente|hook|outro|pre-?chorus|pre-?coro|interlude|instrumental)\s*\d*\)?\s*[:.-]?\s*$/i;
+const VENTANA = 4;   // una rima se busca entre versos cercanos (esquemas ABAB, AABB…): en una letra larga, comparar cada verso con todos infla la rima
 const mediana = (xs) => { if (!xs.length) return 0; const s = [...xs].sort((a, b) => a - b); const m = Math.floor(s.length / 2); return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
+
+/** El texto de la letra dentro de una nota de canción: la sección «## Letra…» (hasta el siguiente «## »); si no la hay, la nota entera. */
+export function letraDeNota(texto) {
+  const cuerpo = String(texto ?? '').replace(/^---\n[\s\S]*?\n---\n/, '');
+  const l = cuerpo.split('\n'); const i = l.findIndex((x) => /^##\s+letra\b/i.test(x));
+  if (i < 0) return cuerpo;
+  let j = i + 1; while (j < l.length && !/^##\s/.test(l[j])) j++;
+  return l.slice(i + 1, j).join('\n');
+}
 
 /** Parte una letra en secciones y versos. Ignora el Markdown, la línea de idea central y todo lo que siga a «Notas técnicas». */
 export function partirLetra(texto) {
@@ -147,7 +160,7 @@ export function partirLetra(texto) {
   for (const bruta of lineas) {
     if (/^\s*#{1,3}\s*notas t[ée]cnicas/i.test(bruta) || /^\s*notas que pesaron/i.test(bruta)) break;
     if (/^\s*#{1,6}\s/.test(bruta) && !RE_SECCION.test(bruta)) { if (/versi[óo]n\s+[a-z0-9]/i.test(bruta) && secciones.length) break; continue; }
-    const m = RE_SECCION.exec(bruta);
+    const m = RE_SECCION.exec(bruta) || (RE_ETIQUETA.test(bruta) ? [null, bruta.trim().replace(/[()\[\]:.-]/g, '')] : null);
     if (m) { actual = { nombre: m[1].trim(), versos: [] }; secciones.push(actual); continue; }
     const l = bruta.replace(/[*_`>]/g, '').replace(/^\s*[-•]\s+/, '').trim();
     if (!l || /^idea central/i.test(l) || /^---+$/.test(l)) continue;
@@ -163,7 +176,7 @@ function esquemaDe(versos) {
   const finales = versos.map((v) => palabrasDe(v).at(-1) || '');
   const letras = new Array(versos.length).fill('-'); let sig = 0; const pares = [];
   for (let i = 0; i < versos.length; i++) {
-    for (let j = i + 1; j < versos.length; j++) {
+    for (let j = i + 1; j < Math.min(versos.length, i + 1 + VENTANA); j++) {
       if (!finales[i] || !finales[j]) continue;
       const c = comparaRima(finales[i], finales[j]);
       if (!c) continue;
